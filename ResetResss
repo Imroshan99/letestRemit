@@ -1,0 +1,365 @@
+import { useLocation, useNavigate } from "react-router-dom";
+import Main from "../Layouts/Main";
+import BackArrow from "../../../assets/images/click2remit/Back_arrow.svg";
+import CustomInput from "../../../reusable/CustomInput";
+import FloatInput from "../../../reusable/FloatInput";
+import { Form, notification } from "antd";
+import Swal from "sweetalert2";
+import { useSelector } from "react-redux";
+import { ProfileAPI } from "../../../apis/ProfileAPI";
+import useHttp from "../../../hooks/useHttp";
+import { useReducer, useState } from "react";
+import Spinner from "../../../reusable/Spinner";
+import { checkPassword } from "../../../services/validations/password";
+import VerifyOtp from "../containers/VerifyOtp";
+
+export default function ResetPassword(props) {
+  const [form1] = Form.useForm();
+  const [form2] = Form.useForm();
+  const AuthReducer = useSelector((state) => state.user);
+
+  const navigate = useNavigate();
+  const location = useLocation();
+
+  const [password, setPassword] = useState("");
+  const [loader, setLoader] = useState("");
+  const [charNumberValid, setCharNumberValid] = useState(false);
+  const [specialCharValid, setSpecialCharValid] = useState(false);
+  const [uppercaseValid, setUppercaseValid] = useState(false);
+  const [lowercaseValid, setLowercaseValid] = useState(false);
+  const [numberValid, setNumberValid] = useState(false);
+  const [state, setState] = useReducer((state, newState) => ({ ...state, ...newState }), {
+    isStep: 1,
+    oldPassword: "",
+    newPassword: "",
+    verificationToken: "",
+  });
+
+  const hookChangePassword = useHttp(ProfileAPI.changePassword);
+  const hookSendOtp = useHttp(ProfileAPI.sendOTP);
+
+  const checkPasswordLength = (password) => {
+    if (password.length >= 10) {
+      setCharNumberValid(true);
+    } else {
+      setCharNumberValid(false);
+    }
+  };
+
+  const checkSpecialCharacters = (password) => {
+    const pattern = /[ !@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/g;
+    if (pattern.test(password)) {
+      setSpecialCharValid(true);
+    } else {
+      setSpecialCharValid(false);
+    }
+  };
+
+  const checkUppercase = (password) => {
+    const pattern = /[A-Z]/;
+    if (pattern.test(password)) {
+      setUppercaseValid(true);
+    } else {
+      setUppercaseValid(false);
+    }
+  };
+  const checkLowercase = (password) => {
+    const pattern = /[a-z]/;
+    if (pattern.test(password)) {
+      setLowercaseValid(true);
+    } else {
+      setLowercaseValid(false);
+    }
+  };
+  const checkNumber = (password) => {
+    const pattern = /[0-9]/;
+    if (pattern.test(password)) {
+      setNumberValid(true);
+    } else {
+      setNumberValid(false);
+    }
+  };
+  const handlePasswordChange = (event) => {
+    setPassword(event.target.value);
+    checkPasswordLength(event.target.value);
+    checkSpecialCharacters(event.target.value);
+    checkUppercase(event.target.value);
+    checkLowercase(event.target.value);
+    checkNumber(event.target.value);
+  };
+  const submitHandler = () => {
+    setState({ isStep: 2 });
+    let changePasswordPayload = {
+      requestType: "CHANGEPASSWORD",
+      userId: AuthReducer.userID,
+      oldPassword: state.oldPassword,
+      newPassword: state.newPassword,
+      twofa: "N",
+    };
+    setLoader(true);
+    hookChangePassword.sendRequest(changePasswordPayload, function (data) {
+      setLoader(false);
+      if (data.status == "S") {
+        Swal.fire({
+          title: "Success",
+          text: data.message,
+          icon: "success",
+          confirmButtonColor: "#2dbe60",
+          allowOutsideClick: false,
+        }).then((result) => {
+          if (result.isConfirmed) {
+            window.location.href = "/signin";
+          }
+        });
+      } else {
+        notification.error({ message: data.errorMessage });
+        if (
+          data.errorMessage ===
+          "The old password entered by you does not match with the existing password."
+        ) {
+          setState({ isStep: 1 });
+          form1.setFields([{ name: "oldPassword", errors: [data.errorMessage] }]);
+        } else {
+          form2.setFields([{ name: "newPassword", errors: [data.errorMessage] }]);
+        }
+        let errors = [];
+        data.errorList.forEach((error, i) => {
+          let errorData = {
+            name: error.field,
+            errors: [error.error],
+          };
+          errors.push(errorData);
+        });
+
+        if (errors.length > 0) form2.setFields(errors);
+      }
+    });
+  };
+  const sendOTP = (value) => {
+    setState({ newPassword: value.newPassword });
+    const payload = {
+      requestType: "SENDOTP",
+      // otpType: "RA",
+      otpService: "EMAIL",
+      otpType: "CP",
+      userId: AuthReducer.userID,
+      otpOption: "SM",
+
+      // mobilePhoneCode: state.mobilePhoneCode,
+      // mobileNo: state.mobileNo,
+      // emailId: state.emailId,
+      // senderName: "",
+    };
+    setLoader(true);
+    hookSendOtp.sendRequest(payload, function (data) {
+      setLoader(false);
+      if (data.status == "S") {
+        notification.success({ message: "OTP has been sent to your registered email address." });
+        setState({
+          verificationToken: data.verificationToken,
+          isStep: 3,
+        });
+      } else {
+        notification.error({ message: data.errorMessage });
+      }
+    });
+  };
+  return (
+    <Main sidebar={location?.state?.sidebar}>
+      <div className={`container h-100 ${location?.state?.centerCls ?"d-flex justify-content-center":""}`}>
+      <div class="row h-100">
+        <Spinner spinning={loader}>
+          <div className="CR-default-box" style={{ maxWidth: "700px" }}>
+            {state.isStep === 1 && (
+              <Form
+                form={form1}
+                onFinish={(value) => {
+                  setState({ oldPassword: value.oldPassword, isStep: 2 });
+                }}
+              >
+                {" "}
+                <div className="CR-side-space">
+                  <div
+                    className="d-flex justify-content-between flex-column field-mobileResp"
+                    style={{ height: "604px" }}
+                  >
+                    <ul className="row CR-side-space">
+                      <li className="back-arrow-nav   d-xs-block d-done">
+                        <img src={BackArrow} alt="" />
+                      </li>
+
+                      <li className="col-md-12 col-sm-12 col-lg-12 ">
+                        <h4 className="text-black CR-font-28 mb-1">Reset Password</h4>
+                      </li>
+                      <li className="col-md-12 col-sm-12 col-lg-12 my-4">
+                        <ul className="row">
+                          <CustomInput
+                            showLabel={false}
+                            name="oldPassword"
+                            label="Confirm current password"
+                            validationRules={[
+                              ({ getFieldValue }) => ({
+                                validator(rule, value) {
+                                  let message = "";
+                                  let obj = checkPassword(value ? value : "");
+                                  message = obj.message;
+                                  if (obj.status === "S") {
+                                    return Promise.resolve();
+                                  }
+                                  return Promise.reject(message);
+                                },
+                              }),
+                            ]}
+                          >
+                            <FloatInput type="password" placeholder="Confirm current password" />
+                          </CustomInput>
+                        </ul>
+                      </li>
+                    </ul>
+                  </div>
+                </div>
+                <div className="bottom_panel">
+                  <div className="d-flex justify-content-between align-items-center gap-3 gap-md-5">
+                    <span
+                      onClick={() => navigate("/new-transaction")}
+                      className="Back_arrow d-flex align-items-center"
+                    >
+                      <img src={BackArrow} alt="" />
+                      Back
+                    </span>
+                    <button
+                      type="submit"
+                      style={{ maxWidth: "17rem" }}
+                      //   onClick={() => setState({ profileComponent: false })}
+                      className="CR-primary-btn"
+                    >
+                      PROCEED
+                    </button>
+                  </div>
+                </div>
+              </Form>
+            )}
+            {state.isStep === 2 && (
+              <Form form={form2} onFinish={sendOTP}>
+                <div className="CR-side-space">
+                  <div
+                    className="d-flex justify-content-between flex-column field-mobileResp"
+                    style={{ height: "604px" }}
+                  >
+                    <ul className="row CR-side-space">
+                      <li className="back-arrow-nav   d-xs-block d-done">
+                        <img src={BackArrow} alt="" />
+                      </li>
+
+                      <li className="col-md-12 col-sm-12 col-lg-12 ">
+                        <h4 className="text-black CR-font-28 mb-1">Set New Password</h4>
+                      </li>
+                      <li className="col-md-12 col-sm-12 col-lg-12 my-2">
+                        <ul className="row">
+                          <li className="col-md-12 col-sm-12 col-lg-12 mb-4">
+                            <ul className="password-match">
+                              <li className={charNumberValid ? "active" : "inactive"}>
+                                At least 10 characters long
+                              </li>
+                              <li className={uppercaseValid ? "active" : "inactive"}>
+                                At least 1 uppercase letter
+                              </li>
+                              <li className={lowercaseValid ? "active" : "inactive"}>
+                                At least 1 lowercase letter
+                              </li>
+                              <li
+                                className={numberValid && specialCharValid ? "active" : "inactive"}
+                              >
+                                At least 1 number or special character
+                              </li>
+                            </ul>
+                          </li>
+                          <CustomInput
+                            showLabel={false}
+                            name="newPassword"
+                            label="Create new password"
+                            validationRules={[
+                              ({ getFieldValue }) => ({
+                                validator(rule, value) {
+                                  let message = "";
+                                  let obj = checkPassword(value ? value : "");
+                                  message = obj.message;
+                                  if (obj.status === "S") {
+                                    return Promise.resolve();
+                                  }
+                                  return Promise.reject(message);
+                                },
+                              }),
+                            ]}
+                          >
+                            <FloatInput
+                              type="password"
+                              onChange={handlePasswordChange}
+                              placeholder="Create new password"
+                            />
+                          </CustomInput>
+                        </ul>
+                        <ul className="row">
+                          <CustomInput
+                            showLabel={false}
+                            name="confirmPassword"
+                            label="Confirm new password"
+                            validationRules={[
+                              ({ getFieldValue }) => ({
+                                validator(rule, value) {
+                                  if (!value || getFieldValue("newPassword") === value) {
+                                    return Promise.resolve();
+                                  }
+                                  return Promise.reject(
+                                    "The two password that you entered do not match!",
+                                  );
+                                },
+                              }),
+                            ]}
+                            required
+                          >
+                            <FloatInput type="password" placeholder="Confirm new password" />
+                          </CustomInput>
+                        </ul>
+                      </li>
+                    </ul>
+                  </div>
+                </div>
+                <div className="bottom_panel">
+                  <div className="d-flex justify-content-between align-items-center gap-3 gap-md-5">
+                    <span
+                      onClick={() => setState({ isStep: 1 })}
+                      className="Back_arrow d-flex align-items-center"
+                    >
+                      <img src={BackArrow} alt="" />
+                      Back
+                    </span>
+                    <button
+                      type="submit"
+                      style={{ maxWidth: "17rem" }}
+                      //   onClick={() => setState({ profileComponent: false })}
+                      className="CR-primary-btn"
+                    >
+                      RESET PASSSWORD
+                    </button>
+                  </div>
+                </div>
+              </Form>
+            )}
+          </div>
+          {state.isStep === 3 && (
+            <VerifyOtp
+              setLoader={setLoader}
+              state={state}
+              setState={setState}
+              submitHandler={submitHandler}
+              useFor="reset_password"
+            />
+          )}
+        </Spinner>
+        </div>
+      </div>
+    </Main>
+  );
+}
+//          navigate("/reset-password", { state: { sidebar: false,centerCls:true } });
