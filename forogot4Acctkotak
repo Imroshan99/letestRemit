@@ -1,0 +1,284 @@
+import React, { useState, useEffect, useReducer } from "react";
+import { Link, useNavigate } from "react-router-dom";
+import { Form, Input, Select, notification, Spin } from "antd";
+import moment from "moment";
+import { AuthAPI } from "../../../apis/AuthAPI";
+import { GuestAPI } from "../../../apis/GuestAPI";
+import OTPBox from "../../../containers/OTPBox";
+import ExchangeRate from "../../../containers/ExchangeRate";
+import { config } from "../../../config";
+import { useSelector } from "react-redux";
+import { encrypt, decrypt, publickey } from "../../../helpers/makeHash";
+import Back_arrow from "../../../assets/images/click2remit/Back_arrow.svg";
+
+import SetNewPassword from "./SetNewPassword";
+import useHttp from "../../../hooks/useHttp";
+import Main from "../Layouts/Main";
+import VerifyOtp from "../containers/VerifyOtp";
+import Spinner from "../../../reusable/Spinner";
+import CustomInput from "../../../reusable/CustomInput";
+import FloatInput from "../../../reusable/FloatInput";
+import { validateEmailId } from "../../../services/validations/email";
+import { ProfileAPI } from "../../../apis/ProfileAPI";
+import MigratedCustomer from "./MigratedCustomer";
+
+const { Option } = Select;
+export default function ForgotPassword(props) {
+  let navigate = useNavigate();
+
+  const ConfigReducer = useSelector((state) => state);
+
+  const [form] = Form.useForm();
+  const [form1] = Form.useForm();
+  const [loading, setLoader] = useState(false);
+  const [isSelectMarketingCommunication, setisSelectMarketingCommunication] = useState("N");
+
+  const [state, setState] = useReducer((state, newState) => ({ ...state, ...newState }), {
+    // isModalVisible: false,
+    verificationToken: "",
+    verifiedToken: "",
+    clientId: ConfigReducer.clientId,
+    groupId: ConfigReducer.groupId,
+    // twofa: ConfigReducer.twofa,
+    isMigrated: false,
+    btnDisable: true,
+    twofa: "Y",
+    sessionId: ConfigReducer.sessionId,
+    formData: {},
+    _isShowOTPBOX: false,
+    _isShowSuccessMessage: true,
+    _setNewPasswordBOX: false,
+    otpType: "FP",
+    activeTab: "1",
+    emailId: "",
+    migratedUserDetails: {},
+  });
+
+  const hookForgotPassword = useHttp(AuthAPI.forgotPassword);
+  const hookSendOTP = useHttp(ProfileAPI.sendOTP);
+  const hookGetMigratedUserDetails = useHttp(GuestAPI.getMigratedUserDetails);
+
+  useEffect(() => {
+    // alert(state.activeTab)
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }, []);
+
+  const onCreateLead = (value) => {
+    let payload = {
+      requestType: "IFRKYC",
+      loginId: value.loginId, //can also pass cif no.
+    };
+    setLoader(true);
+    hookGetMigratedUserDetails.sendRequest(payload, function (data) {
+      setLoader(false);
+      setState({ btnDisable: false });
+      if (data.status == "S") {
+        notification.success({
+          message: data.message ? data.message : "Migrated user verified.",
+        });
+        if (data.isMigretedCustomer == "Y") {
+          setState({ migratedUserDetails: { ...data }, checkForMigrate: true });
+
+          setState({
+            isMigrated: true,
+            // verificationToken: data.verificationToken,
+            _isShowSuccessMessage: false,
+          });
+          // if (data.isMigretedCustomer == "Y") {
+           
+          // } else {
+          //   // setState({
+          //   //   verificationToken: data.verificationToken,
+          //   //   _showSignInForm: false,
+          //   //   // _isShowOTPBOX: true,
+          //   //   // isModalVisible: true,
+          //   // });
+          // }
+          // sendOTP(data, { isMigrated: true });
+        }
+      } else {
+        setState({ checkForMigrate: false });
+        // notification.error({ message: data.errorMessage });
+        setState({ emailId: value.loginId });
+        let forgotPasswordPayload = {
+          requestType: "FORGOTPASSWORD",
+          loginId: value.loginId,
+          dob: "",
+          verifyType: value.verifyType,
+          otpService: "EMAIL",
+          otpType: "FP",
+        };
+
+        setLoader(true);
+        hookForgotPassword.sendRequest(forgotPasswordPayload, (res) => {
+          if (res.status == "S") {
+            if (value.verifyType === "O") {
+              notification.success({
+                message: "OTP has been sent to your registered email address.",
+              });
+              setState({ verificationToken: res.verificationToken });
+              if (state.twofa == "N") {
+                setState({
+                  // isModalVisible: true,
+                  formData: value,
+                });
+              } else {
+                setState({
+                  _isShowOTPBOX: true,
+                  _isShowSuccessMessage: false,
+                  // isModalVisible: true,
+                  formData: value,
+                });
+              }
+            }
+            // if (value.verifyType === "L") {
+            //   notification.success({ message: res.message });
+            //   navigate("/signin");
+            // }
+          } else {
+            setLoader(false);
+            notification.error({ message: res.errorMessage });
+
+            let errors = [];
+            res.data.errorList.forEach((error, i) => {
+              let errorData = {
+                name: error.field,
+                errors: [error.error],
+              };
+              errors.push(errorData);
+            });
+
+            if (errors.length > 0) {
+              if (value.verifyType === "O") {
+                form.setFields(errors);
+              }
+              if (value.verifyType === "L") {
+                form1.setFields(errors);
+              }
+            }
+          }
+          setLoader(false);
+        });
+      }
+    });
+  };
+
+  const handleTabChange = (event, newValue) => {
+    setState({ activeTab: newValue });
+  };
+  const sendOTP = (data, check) => {
+    const OTPData = {
+      requestType: "SENDOTP",
+      otpType: "LG",
+      userId: data.userId,
+      otpOption: "SM",
+      otpService: "EMAIL",
+    };
+    setLoader(true);
+    hookSendOTP.sendRequest(OTPData, function (data) {
+      setLoader(false);
+      if (data.status == "S") {
+        notification.success({
+          message:
+            "OTP has been sent to your registered email address. Please check and enter correct OTP to proceed.",
+        });
+        setState({
+          verificationToken: data.verificationToken,
+          _showSignInForm: false,
+          // _isShowOTPBOX: true,
+          // isModalVisible: true,
+        });       
+      } else {
+        notification.error({ message: data.errorMessage });
+      }
+    });
+  };
+  const getMigratedUserDetails = (e) => {
+    if (e.target.value) {
+    }
+  };
+
+  return (
+    <Main sidebar={false}>
+      <div className="container h-100 d-flex justify-content-center w-100">
+        <Spinner spinning={loading}>
+          {state._isShowSuccessMessage && (
+            <>
+              <Form form={form} initialValues={{ verifyType: "O" }} onFinish={onCreateLead}>
+                <div className="CR-otp-form-parent" style={{ minHeight: "0px" }}>
+                  <div className="CR-otp-form-child">
+                    <ul className="row d-flex flex-column align-items-center">
+                      <li className="col-md-12 col-sm-12 col-lg-12 mb-4">
+                        <h4 className="text-black text-center">Forgot Password?</h4>
+                      </li>
+                      <li className="col-md-12 col-sm-12 col-lg-12">
+                        <p className="text-center">
+                          A 6 digit OTP will be sent to your registered email id
+                        </p>
+                      </li>
+                      <li className="col-md-12 col-sm-12 col-lg-12">
+                        <CustomInput
+                          showLabel={false}
+                          name="loginId"
+                          label="Email address"
+                          validationRules={[
+                            ({ getFieldValue }) => ({
+                              validator(rule, value) {
+                                let message = "";
+                                let obj = validateEmailId(value ? value : "");
+                                message = obj.message;
+                                if (obj.status === "S") {
+                                  return Promise.resolve();
+                                }
+                                return Promise.reject(message);
+                              },
+                            }),
+                          ]}
+                        >
+                          <FloatInput placeholder="Email address" />
+                        </CustomInput>
+                      </li>
+                      <li className="col-md-12 col-sm-12 col-lg-12">
+                        <Form.Item name="verifyType" hidden={true}>
+                          <Input type={"hidden"} />
+                        </Form.Item>
+                      </li>
+                    </ul>
+                  </div>
+                  <div className="bottom_panel">
+                    <div style={{padding:"0px 10px 0px 10px"}} className="d-flex justify-content-between align-items-center gap-3 gap-md-5">
+                      <div
+                        className="Back_arrow d-flex align-items-center"
+                        onClick={() => {
+                          navigate("/signin");
+                        }}
+                      >
+                        <img src={Back_arrow} alt="backArrow" /> Back
+                      </div>
+                      <button style={{ maxWidth: "15rem" }} className="CR-primary-btn">
+                        {state.twofa == "Y" ? "Verify With OTP" : "Verify Without OTP"}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </Form>
+            </>
+          )}
+          {state._setNewPasswordBOX && (
+            <SetNewPassword state={state} setState={setState} appState={props.appState} />
+          )}
+        </Spinner>
+        {state._isShowOTPBOX && (
+          <VerifyOtp
+            state={state}
+            setState={setState}
+            otpType={state.otpType}
+            useFor="forgot_password"
+            appState={props.appState}
+          />
+        )}
+        {state.isMigrated && <MigratedCustomer state={state} setState={setState} />}
+      </div>
+    </Main>
+  );
+}
