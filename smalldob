@@ -1,0 +1,6 @@
+    if (props?.state?.dob) {
+      setState({ pickerField: true });
+      form.setFieldsValue({
+        dob: props?.state.dob,
+      });
+    }
