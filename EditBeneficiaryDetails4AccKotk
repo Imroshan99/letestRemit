@@ -1,0 +1,1179 @@
+import React, { useEffect, useReducer, useState } from "react";
+import { useSelector } from "react-redux";
+import { useLocation, useNavigate } from "react-router-dom";
+import { BankAccountAPI } from "../../../apis/BankAccountAPI";
+import { ReceiverAPI } from "../../../apis/ReceiverAPI";
+import bank1png from "../../../assets/images/click2remit/bank-1.png";
+import { Input, notification, Select } from "antd";
+import useHttp from "../../../hooks/useHttp";
+import BackArrow from "../../../assets/images/click2remit/Back_arrow.svg";
+import { Form } from "antd";
+import CustomInput from "../../../reusable/CustomInput";
+import FloatInput from "../../../reusable/FloatInput";
+import Main from "../Layouts/Main";
+import { config } from "../../../config";
+import Spinner from "../../../reusable/Spinner";
+import Swal from "sweetalert2";
+import { inputValidations } from "../../../services/validations/validations";
+import { GuestAPI } from "../../../apis/GuestAPI";
+import VerifyOtp from "../containers/VerifyOtp";
+import { ProfileAPI } from "../../../apis/ProfileAPI";
+import ViaVerifyOTP from "../containers/ViaVerifyOTP";
+import { ViAmericaAuthAPI } from "../../../apis/ViAmericaApi/Auth";
+import { TransactionAPI } from "../../../apis/TransactionAPI";
+import { VIAmericaTransactionAPI } from "../../../apis/ViAmericaApi/TranscationAPI";
+
+const { Option } = Select;
+
+const EditBeneficiaryDetails = (props) => {
+  const receiverInfo = props.receiverData ? props.receiverData : props.state.receiverData;
+  const [form] = Form.useForm();
+  const navigate = useNavigate();
+  const location = useLocation();
+  const AuthReducer = useSelector((state) => state.user);
+  const [loader, setLoader] = useState(0);
+  const [state, setState] = useReducer((state, newState) => ({ ...state, ...newState }), {
+    bankLists: [],
+    phoneCodes: [],
+    banckDetails: {},
+    stateLists: [],
+    cityLists: [],
+    bankCityList: [],
+    bankStateLists: [],
+    bankDetails: {},
+    bankBranchLists: [],
+    newBankDetails: {},
+    _isShowOTPBOX: false,
+    verificationToken: "",
+    value: {},
+    eventId: "",
+    relationshipLists: [],
+    purposeLists: [],
+    purposeCode: "",
+    purposeName: "",
+  });
+  const hookGetBankLists = useHttp(ReceiverAPI.bankLists);
+  const hookCheckDuplicateReceiver = useHttp(ReceiverAPI.checkDuplicateReceiver);
+  const hookEditReceiver = useHttp(ReceiverAPI.editReceiver);
+  const hookGetCountryPhoneCodes = useHttp(GuestAPI.getCountryPhoneCodes);
+  const hookGetCountryStates = useHttp(GuestAPI.countryStates);
+  const hookGetStateCities = useHttp(GuestAPI.stateCities);
+  const hookGebankBranches = useHttp(ReceiverAPI.bankBranches);
+  const hookGetBankStateCities = useHttp(ReceiverAPI.bankStateCities);
+  const hookSendOtp = useHttp(ProfileAPI.sendOTP);
+  const hookViaSendOTP = useHttp(ViAmericaAuthAPI.viaSendOTP);
+  const hookGetRelationshipLists = useHttp(GuestAPI.relationshipLists);
+  const hookGetPurposeLists = useHttp(TransactionAPI.purposeLists);
+  const hookViaAddReceiver = useHttp(VIAmericaTransactionAPI.ViaAddReceiver);
+  const hookKotakBnkAccEnquiry = useHttp(BankAccountAPI.kotakBnkAccEnquiry);
+  useEffect(() => {
+    getBankList();
+    getCoutryCodes();
+    getStateLists();
+    getPurposeLists();
+    getRelationshipLists();
+    if (receiverInfo) {
+      form.setFieldsValue({
+        firstName: receiverInfo.firstName,
+        middleName: receiverInfo.middleName,
+        lastName: receiverInfo.lastName,
+        mobileCountryCode: receiverInfo.mobileCountryCode,
+        mobileNo: receiverInfo.mobileNo,
+        emailAddress: receiverInfo.emailId,
+        address1: receiverInfo.address1,
+        address2: receiverInfo.address2,
+        // address3: receiverInfo.address3,
+        zipCode: receiverInfo.zipcode,
+        state: receiverInfo.state,
+        city: receiverInfo.city,
+        nickName: receiverInfo.nickName,
+        relationship: receiverInfo.relationship,
+        accountNo: receiverInfo.accountNo,
+        bankName: receiverInfo.bankName,
+        accountType: receiverInfo.accountType,
+        bankState: receiverInfo.bankState,
+        bankCity: receiverInfo.bankCity,
+        bankBranch: receiverInfo.bankBranch,
+      });
+    }
+  }, []);
+  const ViaAddReceiver = () => {
+    const payload = {
+      requestType: "ADDVIAMERICARECEIVER",
+      userId: AuthReducer.userID,
+      loginId: props?.state?.userLoginId,
+      nickName: receiverInfo.nickName,
+    };
+    setLoader((prevState) => prevState + 1);
+    hookViaAddReceiver.sendRequest(payload, function (data) {
+      setLoader((prevState) => prevState - 1);
+      if (data.status === "S") {
+        notification.success({ message: data.message });
+        editReceiver();
+      } else {
+        notification.error({
+          message: data.errorMessage ? data.errorMessage : "via add receiver failed.",
+        });
+      }
+    });
+  };
+  const getStateLists = async () => {
+    let payload = {
+      requestType: "STATELIST",
+      countryCode: "IN",
+      keyword: "",
+    };
+    setLoader((prevState) => prevState + 1);
+    hookGetCountryStates.sendRequest(payload, function (data) {
+      setLoader((prevState) => prevState - 1);
+      if (data.status === "S") {
+        let activeState = data.responseData.filter((state) => {
+          return state.isActive == "Y";
+        });
+        setState({ stateLists: activeState });
+        // const stateIssuerArray = [...data.responseData];
+        // setState({ stateListsIssuer: stateIssuerArray });
+      } else {
+        notification.error({
+          message: data.errorMessage ? data.errorMessage : "Country state failed.",
+        });
+      }
+    });
+  };
+  const getPurposeLists = () => {
+    const payload = {
+      requestType: "PurposeList",
+      keyword: "",
+      nickName: "NEWRECV",
+      recvCountryCode: AuthReducer.recvCountryCode,
+      userId: AuthReducer.userID,
+    };
+    setLoader((prevState) => prevState + 1);
+    hookGetPurposeLists.sendRequest(payload, function (data) {
+      setLoader((prevState) => prevState - 1);
+      if (data.status == "S") {
+        setState({ purposeLists: data.responseData });
+        data.responseData.filter((purposeData) => {
+          if (receiverInfo.purposeCode == purposeData.purposeCode) {
+            form.setFieldsValue({ purpose: JSON.stringify(purposeData) });
+            setState({
+              purposeName: purposeData.displayName,
+              purposeCode: purposeData.purposeCode,
+            });
+          }
+        });
+      } else {
+        notification.error({
+          message: data.errorMessage ? data.errorMessage : "Purpose list failed.",
+        });
+      }
+    });
+  };
+  const onSelectStateHandler = async (stateCode) => {
+    form.setFieldsValue({ city: "" });
+    const cityPayload = {
+      requestType: "CITILIST",
+      countryCode: AuthReducer.sendCountryCode,
+      countryCode: "IN",
+      stateCode: stateCode,
+    };
+    setLoader((prevState) => prevState + 1);
+    hookGetStateCities.sendRequest(cityPayload, function (data) {
+      setLoader((prevState) => prevState - 1);
+      if (data.status === "S") {
+        setState({
+          cityLists: data.responseData,
+        });
+      } else {
+        notification.error({
+          message: data.errorMessage ? data.errorMessage : "State cities failed.",
+        });
+        setState({
+          cityLists: [],
+        });
+      }
+    });
+  };
+  const getCoutryCodes = async () => {
+    if (AuthReducer.groupId === "C2R") {
+      setState({
+        phoneCodes: [
+          // { countryPhoneCode: 44, countryName: "United Kingdom" },
+          { countryPhoneCode: 91, countryName: "India" },
+        ],
+        selectPhoneCodes: true,
+      });
+    } else {
+      const payload = {
+        requestType: "COUNTRYPHONECODE",
+      };
+      // props.AddRecipientFormsetLoader(true);
+      setLoader((prevState) => prevState + 1);
+      hookGetCountryPhoneCodes.sendRequest(payload, function (data) {
+        setLoader((prevState) => prevState - 1);
+        if (data.status == "S") {
+          // let _recvCountryCode = data.responseData.filter(
+          //   (item) => item.countryCode === AuthReducer.recvCountryCode,
+          // );
+
+          setState({
+            // phoneCodes: data.responseData,
+            phoneCodes: [
+              { countryPhoneCode: 1, countryName: "United States" },
+              { countryPhoneCode: 91, countryName: "India" },
+            ],
+            // selectPhoneCodes: false,
+            // mobileCountryCode: _recvCountryCode[0].countryPhoneCode,
+          });
+          // props.newForm1.setFieldsValue({
+          //   mobileCountryCode: _recvCountryCode[0].countryPhoneCode,
+          // });
+          // props.setLoader(false);
+        }
+      });
+    }
+  };
+  const getBankList = async (e) => {
+    const payload = {
+      requestType: "BANKLIST",
+      countryCode: AuthReducer.recvCountryCode,
+      userId: AuthReducer.userID,
+    };
+    setLoader((loader) => loader + 1);
+    hookGetBankLists.sendRequest(payload, function (data) {
+      setLoader((loader) => loader - 1);
+      if (data.status === "S") {
+        setState({
+          bankLists: data.responseData,
+        });
+      } else {
+        notification.error({
+          message: data.errorMessage ? data.errorMessage : "Get bank list failed.",
+        });
+      }
+    });
+  };
+  const getRelationshipLists = async () => {
+    let payload = {
+      requestType: "RELAIONSHIPLISTS",
+    };
+    setLoader((loader) => loader + 1);
+    hookGetRelationshipLists.sendRequest(payload, function (data) {
+      setLoader((loader) => loader - 1);
+      if (data.status == "S") {
+        setState({ relationshipLists: data.responseData });
+      } else {
+        notification.error({
+          message: data.errorMessage ? data.errorMessage : "Relationship failed.",
+        });
+        setState({ relationshipLists: [] });
+      }
+    });
+  };
+  const onFinish = (value) => {
+    setState({ value: { ...value } });
+    const payload = {
+      requestType: "VIASENDOTP",
+      userId: AuthReducer.userID,
+      otpType: "SEND",
+      optionID: "email", //pass email or phone
+      // otpType: "MAIL", //MAIL,LOGINMFA, SMS
+      // phone: `+1${state.mobileNo}`,
+      // phone: `+449923894533`,
+      // emailId: state.beneficiaryDetails.email,
+    };
+    setLoader((prevState) => prevState + 1);
+    hookViaSendOTP.sendRequest(payload, function (data) {
+      setLoader((prevState) => prevState - 1);
+      if (data.status == "S") {
+        notification.success({ message: "OTP has been sent to your registered email address." });
+        setState({
+          eventId: data.eventId,
+          // verificationToken: data.verificationToken,
+          _isShowOTPBOX: true,
+        });
+      } else {
+        notification.error({
+          message: data.errorMessage ? data.errorMessage : "Via send OTP failed",
+        });
+      }
+      // if (state.twofa === "Y") {
+    });
+  };
+  const onChangeHandle = (e) => {
+    setState({ bankDetails: JSON.parse(e) });
+    form.setFieldsValue({ bankState: "", bankCity: "", bankBranch: "" });
+  };
+
+  const onSelectBankStateHandler = async (stateCode) => {
+    setState({ stateCodeForBankBranch: stateCode });
+    form.setFieldsValue({ bankCity: "", bankBranch: "" });
+    const payload = {
+      requestType: "BankStateCities",
+      countryCode: "IN",
+      state: stateCode,
+      bankName: state.bankDetails.bankName ? state.bankDetails.bankName : receiverInfo.bankName,
+      search: "",
+    };
+
+    setLoader((prevState) => prevState + 1);
+    hookGetBankStateCities.sendRequest(payload, function (data) {
+      setLoader((prevState) => prevState - 1);
+      if (data.status === "S") {
+        setState({
+          bankCityList: data.responseData,
+        });
+      } else {
+        notification.error({
+          message: data.errorMessage ? data.errorMessage : "Get bank state cities failed.",
+        });
+        setState({
+          bankCityList: [],
+        });
+      }
+    });
+  };
+  const onSetectCity = async (cityName) => {
+    form.setFieldsValue({ bankBranch: "" });
+    setState({ cityCodeForBankBranch: cityName });
+    const payload = {
+      requestType: "BANKBRANCHES",
+      countryCode: "IN",
+      bankCode: state.bankDetails.bankCode ? state.bankDetails.bankCode : receiverInfo.bankCode,
+      bankName: state.bankDetails.bankName ? state.bankDetails.bankName : receiverInfo.bankName,
+      cityCode: cityName,
+      stateCode: state.stateCodeForBankBranch,
+      city: "",
+      keyword: "",
+    };
+
+    setLoader((prevState) => prevState + 1);
+    hookGebankBranches.sendRequest(payload, function (data) {
+      setLoader((prevState) => prevState - 1);
+      if (data.status === "S") {
+        setState({
+          bankBranchLists: data.responseData,
+        });
+      } else {
+        notification.error({
+          message: data.errorMessage ? data.errorMessage : "Bank branch failed.",
+        });
+        form.setFieldsValue({ bankBranch: "" });
+        setState({
+          bankBranchLists: [],
+        });
+      }
+    });
+  };
+  const editReceiver = () => {
+    if (
+      state.bankDetails.bankCode == "KKBK" ||
+      receiverInfo.bankName.includes("KOTAK")
+    ) {
+      const payload = {
+        requestType: "KOTAKACCENQUIRY",
+        accountNo: state.value.accountNo,
+        userId: AuthReducer.userID,
+      };
+      setLoader((prevState) => prevState + 1);
+      hookKotakBnkAccEnquiry.sendRequest(payload, function (data) {
+        setLoader((prevState) => prevState - 1);
+        if (data.status === "S") {
+          if (data.statusFlag == "A" || data.statusFlag == "I" || data.statusFlag == "F") {
+            notification.success({ message: data.message });
+            mainEditBene();
+          } else {
+            notification.error({ message: "Status flag not found" });
+          }
+        } else {
+          notification.error({ message: data.errorMessage });
+        }
+      });
+    } else {
+      mainEditBene();
+    }
+  };
+  const mainEditBene = () => {
+    let formData = {
+      requestType: "RECEIVERADD",
+      clientId: props?.state?.receiverData ? "C2R" : "VIAMERICAS",
+      receiverType: "INDIVIDUAL",
+      firstName: state.value.firstName.trim(),
+      middleName: state.value.middleName ? state.value.middleName.trim() : "",
+      lastName: state.value.lastName.trim(),
+      nickName: state.value.nickName ? state.value.nickName : receiverInfo.nickName,
+      accountNo: state.value.accountNo,
+      relationship: state.value.relationship,
+      gender: "",
+      dob: "",
+      address1: state.value.address1,
+      address2: state.value.address2,
+      // address3: state.value.address3,
+      zipcode: state.value.zipCode,
+      state: state.value.state,
+      stateOther: "",
+      city: state.value.city,
+      nationality: "",
+      cityOther: "",
+      emailId: state.value.emailAddress,
+      mobileCountryCode: state.value.mobileCountryCode,
+      mobileNo: state.value.mobileNo,
+      phoneNo: "",
+      altPhone: "",
+      fax: "",
+      recvMode: "DC",
+      accountHolderName: `${state.value.firstName.trim()} ${state.value.lastName.trim()}`,
+      accountType: "S",
+      bankName: state.newBankDetails.bankName
+        ? state.newBankDetails.bankName
+        : receiverInfo.bankName,
+      branchCode: state.newBankDetails.branchCode
+        ? state.newBankDetails.branchCode
+        : receiverInfo.branchCode,
+      bankBranch: state.newBankDetails.branchName
+        ? state.newBankDetails.branchName
+        : receiverInfo.bankBranch,
+      bankAddress: state.newBankDetails.bankAddress
+        ? state.newBankDetails.bankAddress
+        : receiverInfo.bankAddress,
+      bankState: state.newBankDetails.bankState
+        ? state.newBankDetails.bankState
+        : receiverInfo.bankState,
+      bankCity: state.newBankDetails.bankCity
+        ? state.newBankDetails.bankCity
+        : receiverInfo.bankCity,
+      nearestBranchCode: "",
+      nearestBranch: "",
+      recvUniqueIdType: "",
+      recvUniqueIdValue: "",
+      interBankCode: "",
+      interBank: "",
+      interAccountNo: "",
+      interAccountType: "",
+      interBranchCode: "",
+      interBankBranch: "",
+      interBankAddress: "",
+      interBankCountry: "",
+      recvCountry: AuthReducer.recvCountryCode,
+      recvCurrency: AuthReducer.recvCurrencyCode,
+      purpose: state.purposeName,
+      purposeCode: state.purposeCode,
+      remark: "",
+      isSameBank: "N",
+      twofa: "N",
+      viamfa: "Y",
+      otpOption: "email",
+      userId: AuthReducer.userID,
+      recordToken: receiverInfo.recordToken,
+    };
+    setLoader((prevState) => prevState + 1);
+    hookCheckDuplicateReceiver.sendRequest(formData, function (data) {
+      setLoader((prevState) => prevState - 1);
+      if (data.status == "S") {
+        setLoader((prevState) => prevState + 1);
+        hookEditReceiver.sendRequest(formData, function (data) {
+          setLoader((prevState) => prevState - 1);
+          if (data.status == "S") {
+            notification.success({ message: data.message });
+            if (props?.state?.receiverData) {
+              navigate("/new-transaction");
+            } else {
+              navigate("/my-beneficiary");
+            }
+          } else {
+            notification.error({
+              message: data.errorMessage ? data.errorMessage : "Edit receiver failed",
+            });
+            let errors = [];
+            data.errorList.forEach((error, i) => {
+              let errorData = {
+                name: error.field,
+                errors: [error.error],
+              };
+              errors.push(errorData);
+            });
+            if (errors.length > 0) form.setFields(errors);
+            if (errors.length > 0) form.setFields(errors);
+          }
+        });
+      } else {
+        if (!data.errorList) {
+          notification.error({
+            message: data.errorMessage ? data.errorMessage : "Edit receiver failed",
+          });
+        }
+        let errors = [];
+        data.errorList.forEach((error, i) => {
+          if (error.field == "accountNo") {
+            notification.error({ message: error.error });
+          }
+          let errorData = {
+            name: error.field,
+            errors: [error.error],
+          };
+          errors.push(errorData);
+        });
+
+        if (errors.length > 0) form.setFields(errors);
+      }
+    });
+  };
+  const handleChangePurpose = (purpose) => {
+    // setState({ formObj: { ...state.formObj, purpose: purpose } });
+    let pur = JSON.parse(purpose);
+    setState({ purposeName: pur.displayName, purposeCode: pur.purposeCode });
+  };
+  return (
+    <>
+      {state._isShowOTPBOX ? (
+        <ViaVerifyOTP
+          useFor="edit_receiver"
+          state={state}
+          setState={setState}
+          editReceiver={editReceiver}
+          ViaAddReceiver={ViaAddReceiver}
+          checkUiduserLoginId={props?.state?.userLoginId}
+          checkRecipientUuid={props?.state?.receiverLists}
+        />
+      ) : (
+        <Spinner spinning={loader === 0 ? false : true}>
+          <div className="container h-100">
+            <div className="row h-100 justify-content-center">
+              <Form form={form} onFinish={onFinish}>
+                <div
+                  className="align-self-center col-lg-7 col-md-7 col-sm-12  "
+                  style={{ marginRight: "auto" }}
+                >
+                  <div className="CR-default-box CR-max-width-620">
+                    <ul className="row CR-side-space">
+                      <li className="back-arrow-nav   d-xs-block d-done">
+                        <img src={BackArrow} alt="" />
+                      </li>
+
+                      <li className="col-md-12 col-sm-12 col-lg-12 ">
+                        <h4 className="text-black CR-font-28 mb-1">Edit beneficiary details</h4>
+                      </li>
+
+                      <li className="col-md-12 col-sm-12 col-lg-12 my-2">
+                        <div className="align-items-center cr_greyTitle d-flex justify-content-between">
+                          <p className="mb-0">Personal information</p>
+                          {/* <a onClick={() => props.setState({ activeStepForm: 13 })} className="">
+                      <img src={editsvg} width="17px" height="17px" className="me-1" />
+                      EDIT
+                    </a> */}
+                        </div>
+                      </li>
+                      <li className="col-md-12 col-sm-12 col-lg-12 my-2">
+                        <ul className="row">
+                          <li class="col-md-12 col-sm-12 col-lg-12">
+                            <CustomInput
+                              showLabel={false}
+                              name="firstName"
+                              label="First Name"
+                              validationRules={[
+                                ({ getFieldValue }) => ({
+                                  validator(rule, value) {
+                                    // validate space before and after string
+                                    let startSpace = /^\s/;
+                                    let endSpace = / $/;
+                                    if (startSpace.test(value) || endSpace.test(value)) {
+                                      return Promise.reject(
+                                        "Space not allow before and after first name.",
+                                      );
+                                    }
+
+                                    return Promise.resolve();
+                                  },
+                                }),
+                                {
+                                  pattern: /^[A-Za-z ]+$/,
+                                  message: "Enter valid first name",
+                                },
+                                {
+                                  min: 2,
+                                  max: 60,
+                                  message: "First Name should be between 2 and 60 characters long",
+                                },
+                              ]}
+                              required
+                            >
+                              <FloatInput placeholder="First Name" />
+                            </CustomInput>
+                          </li>
+                          <li class="col-md-12 col-sm-12 col-lg-12">
+                            <CustomInput
+                              showLabel={false}
+                              name="middleName"
+                              label="Middle Name"
+                              validationRules={[
+                                ({ getFieldValue }) => ({
+                                  validator(rule, value) {
+                                    // validate space before and after string
+                                    let startSpace = /^\s/;
+                                    let endSpace = / $/;
+                                    if (startSpace.test(value) || endSpace.test(value)) {
+                                      return Promise.reject(
+                                        "Space not allow before and after middle name.",
+                                      );
+                                    }
+
+                                    return Promise.resolve();
+                                  },
+                                }),
+                                {
+                                  pattern: /^[A-Za-z ]+$/,
+                                  message: "Enter valid middle name",
+                                },
+                                {
+                                  min: 1,
+                                  max: 60,
+                                  message: "Middle Name should be between 2 and 60 characters long",
+                                },
+                              ]}
+                            >
+                              <FloatInput placeholder="Middle Name (optional)" />
+                            </CustomInput>
+                          </li>
+                          <li class="col-md-12 col-sm-12 col-lg-12">
+                            <CustomInput
+                              showLabel={false}
+                              name="lastName"
+                              label="Last Name"
+                              validationRules={[
+                                ({ getFieldValue }) => ({
+                                  validator(rule, value) {
+                                    // validate space before and after string
+                                    let startSpace = /^\s/;
+                                    let endSpace = / $/;
+                                    if (startSpace.test(value) || endSpace.test(value)) {
+                                      return Promise.reject(
+                                        "Space not allow before and after last name.",
+                                      );
+                                    }
+
+                                    return Promise.resolve();
+                                  },
+                                }),
+                                {
+                                  pattern: /^[A-Za-z ]+$/,
+                                  message: "Enter valid last name",
+                                },
+                                {
+                                  min: 2,
+                                  max: 60,
+                                  message: "Last Name should be between 2 and 60 characters long",
+                                },
+                              ]}
+                              required
+                            >
+                              <FloatInput placeholder="Last Name" />
+                            </CustomInput>
+                          </li>
+                          {/* <li class="col-md-12 col-sm-12 col-lg-12">
+                            <CustomInput
+                              showLabel={false}
+                              name="nickName"
+                              label="Nick Name"
+                              min={2}
+                              max={30}
+                              validationRules={[
+                                {
+                                  pattern: /^[A-Z]+$/i,
+                                  message: "Only alphabetic characters allowed",
+                                },
+                              ]}
+                              required
+                            >
+                              <FloatInput disabled={true} type="text" placeholder="Nick Name" />
+                            </CustomInput>
+                          </li> */}
+                          <li class="col-md-12 col-sm-12 col-lg-12">
+                            <CustomInput
+                              showLabel={false}
+                              name="relationship"
+                              label="Relationship"
+                              required
+                            >
+                              <FloatInput type="select" placeholder="Relationship">
+                                {state.relationshipLists.map((list, i) => {
+                                  return (
+                                    <Option key={i} value={list.relationshipDesc}>
+                                      {list.relationshipDesc}
+                                    </Option>
+                                  );
+                                })}
+                              </FloatInput>
+                            </CustomInput>
+                          </li>
+                          <li class="col-md-12 col-sm-12 col-lg-12">
+                            <CustomInput
+                              name="purpose"
+                              label="Purpose For Transfer"
+                              placeholder="Purpose For Transfer"
+                              showLabel={false}
+                              required
+                            >
+                              <FloatInput
+                                type="select"
+                                name="purpose"
+                                className="w-100"
+                                onChange={handleChangePurpose}
+                                placeholder="Purpose For Transfer"
+                                required
+                              >
+                                {state.purposeLists.map((purpose, i) => {
+                                  return (
+                                    <Option key={i} value={JSON.stringify(purpose)}>
+                                      {purpose.displayName}
+                                    </Option>
+                                  );
+                                })}
+                              </FloatInput>
+                            </CustomInput>
+                          </li>
+                          <li class="col-md-12 col-sm-12 col-lg-12">
+                            <div className="row">
+                              <div className="col-12 col-md-5">
+                                <CustomInput
+                                  showLabel={false}
+                                  name="mobileCountryCode"
+                                  label="Select Phone Code"
+                                  required
+                                >
+                                  <FloatInput
+                                    type="select"
+                                    placeholder="Select Phone Code"
+                                    label="Phone Code"
+                                    name="mobileCountryCode"
+                                    required
+                                    //  size="small"
+                                    showSearch
+                                    // value={selectValue}
+                                    // onChange={handleChange}
+                                  >
+                                    {state.phoneCodes.map((phoneCode, i) => {
+                                      return (
+                                        <Option
+                                          key={i}
+                                          value={phoneCode.countryPhoneCode}
+                                        >{`(${phoneCode.countryPhoneCode}) ${phoneCode.countryName}`}</Option>
+                                      );
+                                    })}
+                                  </FloatInput>
+                                </CustomInput>
+                              </div>
+                              <div className="col-12 col-md-7">
+                                <CustomInput
+                                  showLabel={false}
+                                  name="mobileNo"
+                                  label="Mobile Number"
+                                  validationRules={[...inputValidations.mobileNumber()]}
+                                  required
+                                >
+                                  <FloatInput type="text" placeholder="Mobile Number" />
+                                </CustomInput>
+                              </div>
+                            </div>
+                          </li>
+                          <li class="col-md-12 col-sm-12 col-lg-12">
+                            <CustomInput
+                              showLabel={false}
+                              name="emailAddress"
+                              label="Email address"
+                              validationRules={[
+                                ({ getFieldValue }) => ({
+                                  validator(rule, value) {
+                                    // validate space before and after string
+                                    let startSpace = /^\s/;
+                                    let endSpace = / $/;
+                                    if (startSpace.test(value) || endSpace.test(value)) {
+                                      return Promise.reject(
+                                        "Space not allow before and after email.",
+                                      );
+                                    }
+
+                                    return Promise.resolve();
+                                  },
+                                }),
+                                {
+                                  pattern:
+                                    /^([A-Za-z0-9_\-\.])+\@([A-Za-z0-9_\-\.])+\.([A-Za-z]{2,4})$/,
+                                  message: "Please input valid email",
+                                },
+                              ]}
+                            >
+                              <FloatInput placeholder="Email address (optional)" />
+                            </CustomInput>
+                          </li>
+                        </ul>
+                      </li>
+
+                      <li className="col-md-12 col-sm-12 col-lg-12 my-2">
+                        <div className="align-items-center cr_greyTitle d-flex justify-content-between">
+                          <p className="mb-0">Residential details</p>
+                          {/* <a onClick={() => props.setState({ activeStepForm: 13 })} className="">
+                      <img src={editsvg} width="17px" height="17px" className="me-1" />
+                      EDIT
+                    </a> */}
+                        </div>
+                      </li>
+                      <li className="col-md-12 col-sm-12 col-lg-12 my-2">
+                        <ul className="row">
+                          <li class="col-md-12 col-sm-12 col-lg-12">
+                            <CustomInput
+                              showLabel={false}
+                              name="address1"
+                              label="Address line 1"
+                              validationRules={[
+                                ({ getFieldValue }) => ({
+                                  validator(rule, value) {
+                                    let message = "";
+                                    let obj = inputValidations.validateAddress(value ? value : "");
+                                    message = obj.message;
+                                    if (obj.status === "S") {
+                                      return Promise.resolve();
+                                    }
+                                    return Promise.reject(message);
+                                  },
+                                }),
+                              ]}
+                            >
+                              <FloatInput placeholder="Address line 1" />
+                            </CustomInput>
+                          </li>
+                          <li class="col-md-12 col-sm-12 col-lg-12">
+                            <CustomInput
+                              showLabel={false}
+                              name="address2"
+                              label="Address line 2"
+                              validationRules={[
+                                ({ getFieldValue }) => ({
+                                  validator(rule, value) {
+                                    let message = "";
+                                    let obj = inputValidations.validateAddress(value ? value : "");
+                                    message = obj.message;
+                                    if (obj.status === "S") {
+                                      return Promise.resolve();
+                                    }
+                                    return Promise.reject(message);
+                                  },
+                                }),
+                              ]}
+                            >
+                              <FloatInput placeholder="Address line 2" />
+                            </CustomInput>
+                          </li>
+                          {/* <li class="col-md-12 col-sm-12 col-lg-12">
+                            <CustomInput
+                              showLabel={false}
+                              name="address3"
+                              label="Address line 3"
+                              validationRules={[
+                                ({ getFieldValue }) => ({
+                                  validator(rule, value) {
+                                    // validate space before and after string
+                                    let startSpace = /^\s/;
+                                    let endSpace = / $/;
+                                    if (startSpace.test(value) || endSpace.test(value)) {
+                                      return Promise.reject(
+                                        "Space not allow before and after address.",
+                                      );
+                                    }
+
+                                    return Promise.resolve();
+                                  },
+                                }),
+                                ({ getFieldValue }) => ({
+                                  validator(rule, value) {
+                                    const validStr =
+                                      ' abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ.0123456789/-?()",+#&_[]\n\r';
+                                    const charArray = value ? value : "";
+                                    const strLen = charArray.length;
+                                    for (let i = 0; i < strLen; i++) {
+                                      if (validStr.indexOf(charArray[i]) === -1) {
+                                        return Promise.reject(
+                                          "Please enter valid address formats.",
+                                        );
+                                      }
+                                    }
+
+                                    return Promise.resolve();
+                                  },
+                                }),
+                                {
+                                  min: 3,
+                                  max: 100,
+                                  message: "Address should be between 3 and 100 characters long.",
+                                },
+                              ]}
+                            >
+                              <FloatInput placeholder="Address line 3" />
+                            </CustomInput>
+                          </li> */}
+                          <li class="col-md-12 col-sm-12 col-lg-12">
+                            <CustomInput
+                              showLabel={false}
+                              name="zipCode"
+                              label="Zip code"
+                              validationRules={[
+                                ...inputValidations.zipCode(AuthReducer.recvCountryCode),
+                                ({ getFieldValue }) => ({
+                                  validator(rule, value) {
+                                    // validate space before and after string
+                                    let startSpace = /^\s/;
+                                    let endSpace = / $/;
+                                    if (startSpace.test(value) || endSpace.test(value)) {
+                                      return Promise.reject(
+                                        "Space not allowed before and after the Zipcode.",
+                                      );
+                                    }
+
+                                    return Promise.resolve();
+                                  },
+                                }),
+                              ]}
+                              required
+                            >
+                              <FloatInput type="text" placeholder="Zip code" />
+                            </CustomInput>
+                          </li>
+                          <li class="col-md-12 col-sm-12 col-lg-12">
+                            <CustomInput name="state" label="State" showLabel={false} required>
+                              <FloatInput
+                                type="select"
+                                autoComplete="none"
+                                placeholder="State"
+                                label="State"
+                                className="w-100"
+                                onSelect={onSelectStateHandler}
+                                filterOption={(inputValue, option) =>
+                                  option.value.toUpperCase().indexOf(inputValue.toUpperCase()) !==
+                                  -1
+                                }
+                              >
+                                {state.stateLists.map((st, i) => {
+                                  return <Option key={i} value={st.state}>{`${st.state}`}</Option>;
+                                })}
+                              </FloatInput>
+                            </CustomInput>
+                          </li>
+                          <li class="col-md-12 col-sm-12 col-lg-12">
+                            <CustomInput name="city" label="City" showLabel={false} required>
+                              <FloatInput
+                                type="select"
+                                placeholder="City"
+                                label="City"
+                                className="w-100"
+                                autoComplete="none"
+                                filterOption={(inputValue, option) =>
+                                  option.value.toUpperCase().indexOf(inputValue.toUpperCase()) !==
+                                  -1
+                                }
+                              >
+                                {state.cityLists.map((st, i) => {
+                                  return <Option key={i} value={st.city}>{`${st.city}`}</Option>;
+                                })}
+                              </FloatInput>
+                            </CustomInput>
+                          </li>
+                        </ul>
+                      </li>
+
+                      <li className="col-md-12 col-sm-12 col-lg-12 my-2">
+                        <div className="align-items-center cr_greyTitle d-flex justify-content-between">
+                          <p className="mb-0">Bank details</p>
+                          {/* <a onClick={() => props.setState({ activeStepForm: 13 })} className="">
+                      <img src={editsvg} width="17px" height="17px" className="me-1" />
+                      EDIT
+                    </a> */}
+                        </div>
+                      </li>
+                      <li className="col-md-12 col-sm-12 col-lg-12 my-2">
+                        <ul className="row">
+                          <li class="col-md-12 col-sm-12 col-lg-12">
+                            <CustomInput
+                              name="bankName"
+                              label="Bank name"
+                              showLabel={false}
+                              showSearch
+                              labelInValue
+                              required
+                            >
+                              <FloatInput
+                                type="select"
+                                placeholder="Bank name"
+                                label="Select Bank"
+                                className="w-100"
+                                onChange={onChangeHandle}
+                              >
+                                {state.bankLists.map((bank, i) => {
+                                  return (
+                                    <Option key={i} value={JSON.stringify(bank)}>
+                                      <span bankCode={bank.bankCode} isSameBank={bank.isSameBank}>
+                                        {bank.bankName}
+                                      </span>
+                                    </Option>
+                                  );
+                                })}
+                              </FloatInput>
+                            </CustomInput>
+                          </li>
+                          <li class="col-md-12 col-sm-12 col-lg-12">
+                            <CustomInput
+                              name="bankState"
+                              placeholder="Select Bank State"
+                              label="State"
+                              showLabel={false}
+                              required
+                            >
+                              <FloatInput
+                                type="select"
+                                labelInValue
+                                autoComplete="none"
+                                placeholder="Select Bank State"
+                                className="w-100"
+                                onSelect={onSelectBankStateHandler}
+                                filterOption={(inputValue, option) =>
+                                  option.value.toUpperCase().indexOf(inputValue.toUpperCase()) !==
+                                  -1
+                                }
+                              >
+                                {state.stateLists.map((st, i) => {
+                                  return (
+                                    <Option key={i} value={st.stateCode}>{`${st.state}`}</Option>
+                                  );
+                                })}
+                              </FloatInput>
+                            </CustomInput>
+                          </li>
+                          <li class="col-md-12 col-sm-12 col-lg-12">
+                            <CustomInput name="bankCity" label="City" showLabel={false} required>
+                              <FloatInput
+                                type="select"
+                                autoComplete="none"
+                                placeholder="Select Bank City"
+                                className="w-100"
+                                onChange={onSetectCity}
+                                filterOption={(inputValue, option) =>
+                                  option.value.toUpperCase().indexOf(inputValue.toUpperCase()) !==
+                                  -1
+                                }
+                              >
+                                {state.bankCityList.map((st, i) => {
+                                  return <Option key={i} value={st.city}>{`${st.city}`}</Option>;
+                                })}
+                              </FloatInput>
+                            </CustomInput>
+                          </li>
+
+                          <li class="col-md-12 col-sm-12 col-lg-12">
+                            <CustomInput
+                              name="bankBranch"
+                              label="Bank Branch"
+                              showLabel={false}
+                              required
+                            >
+                              <FloatInput
+                                type="select"
+                                autoComplete="none"
+                                placeholder="Select Bank Branch"
+                                className="w-100"
+                                onChange={(e) => setState({ newBankDetails: JSON.parse(e) })}
+
+                                // filterOption={(inputValue, option) =>
+                                //   option.value.toUpperCase().indexOf(inputValue.toUpperCase()) !== -1
+                                // }
+                              >
+                                {state.bankBranchLists.map((st, i) => {
+                                  return (
+                                    <Option
+                                      key={i}
+                                      value={JSON.stringify(st)}
+                                    >{`${st.branchName}`}</Option>
+                                  );
+                                })}
+                              </FloatInput>
+                            </CustomInput>
+                          </li>
+
+                          <li class="col-md-12 col-sm-12 col-lg-12">
+                            <CustomInput
+                              showLabel={false}
+                              name="accountNo"
+                              label="Account number"
+                              validationRules={[
+                                ...inputValidations.accountNumber(AuthReducer.recvCountryCode),
+                              ]}
+                              required
+                            >
+                              <FloatInput type="text" placeholder="Account number" />
+                            </CustomInput>
+                          </li>
+
+                          {/* <li class="col-md-12 col-sm-12 col-lg-12">
+                        <CustomInput
+                          placeholder="Select Account Type "
+                          showLabel={false}
+                          name="accountType"
+                          label="Account Type"
+                          labelInValue
+                        >
+                          <FloatInput
+                            type="select"
+                            placeholder="Account Type"
+                            label="Account Type"
+                            name="accountType"
+                            className="w-100"
+                          >
+                            <Option key="ac1" value="S">
+                              Saving
+                            </Option>
+                            <Option key="ac2" value="C">
+                              Current / Checking
+                            </Option>
+                          </FloatInput>
+                        </CustomInput>
+                      </li> */}
+                        </ul>
+                      </li>
+                    </ul>
+
+                    <div className="bottom_panel">
+                      <div className="d-flex justify-content-between align-items-center gap-3 gap-md-5">
+                        <span
+                          className="Back_arrow d-flex align-items-center"
+                          onClick={() => {
+                            if (props?.state?.receiverData) {
+                              navigate("/new-transaction");
+                            } else {
+                              props.setState({ viewBeneficiaryComponent: true });
+                            }
+                          }}
+                        >
+                          <img src={BackArrow} alt="" />
+                          Back
+                        </span>
+                        <button
+                          style={{ maxWidth: "17rem" }}
+                          htmlType="submit"
+                          className=" CR-primary-btn "
+                          // onClick={() => {
+                          //   navigate("/edit-remitter");
+                          // }}
+                        >
+                          Save
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </Form>
+            </div>
+          </div>
+        </Spinner>
+      )}
+    </>
+  );
+};
+
+export default EditBeneficiaryDetails;
