@@ -1,0 +1,23 @@
+<ul
+            className="d-flex justify-content-center gap-5 px-md-3"
+            style={{ listStyleType: "disc", fontSize: "25px" }}
+          >
+            <li>Simple</li>
+            <li>Secure</li>
+            <li>Swift</li>
+          </ul>
+          
+          //bottom
+          
+          
+          
+          {/* <ul
+              className="d-flex gap-5 px-md-3"
+              style={{ listStyleType: "disc", fontSize: "25px" }}
+            >
+              <li>Simple</li>
+              <li>Secure</li>
+              <li>Swift</li>
+            </ul> */}
+            
+            //top
