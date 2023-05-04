@@ -1,0 +1,13 @@
+ <div
+      // className={`h-100 d-flex justify-content-center w-100${
+      //   props?.useFor == "forgot_password" || props?.useFor == "login" ? "" : " px-3"
+      // } `}
+      className={`${location.pathname == "/reset-password" ? "" : "px-md-3"}`}
+    >
+    
+    
+    <div
+      className={`h-100 w-100 px-md-3 ${
+        AuthReducer.isLoggedIn ? "container" : "d-flex justify-content-center"
+      }`}
+    >
