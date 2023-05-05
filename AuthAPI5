@@ -1,0 +1,107 @@
+import axios from "axios";
+import { config } from "../config";
+
+export const AuthAPI = {
+    login: async (data) => {
+        return await axios.post(`${config.API_URL}/services/usr/login`, data);
+    },
+    logout: async (data, token) => {
+        var axosConfig = {
+            method: 'post',
+            url: `${config.API_URL}/services/usr/logout`,
+            headers: {
+                'Authorization': `AuthToken ${token}`,
+                'Content-Type': 'application/json'
+            },
+            data: data
+        };
+
+        return await axios(axosConfig);
+    },
+    checkLoginId: async (data) => {
+        return await axios.post(`${config.API_URL}/services/usr/check-loginid`, data);
+    },
+    saveLeads: async (data) => {
+        return await axios.post(`${config.API_URL}/services/usr/save-leads`, data);
+    },
+    forgotUserID: async (data) => {
+        return await axios.post(`${config.API_URL}/services/usr/forgot-loginid`, data);
+    },
+    forgotPassword: async (data) => {
+        return await axios.post(`${config.API_URL}/services/usr/forgot-password`, data);
+    },
+    resetPassword: async (data) => {
+        return await axios.post(`${config.API_URL}/services/usr/reset-password`, data);
+    },
+    unlockUserid: async (data) => {
+        return await axios.post(`${config.API_URL}/services/usr/unlock-userid`, data);
+    },
+    unlockAccount: async (data) => {
+        return await axios.post(`${config.API_URL}/services/usr/unlock-account`, data);
+    },
+    checkDedupe: async (data) => {
+        return await axios.post(`${config.API_URL}/services/usr/check-dedupe`, data);
+    },
+    signUp: async (data) => {
+        return await axios.post(`${config.API_URL}/services/usr/signup`, data);
+    },
+    crnDetails: async (data) => {
+        return await axios.post(`${config.API_URL}/services/usr/crn-details`, data);
+    },
+    checkUpdateCRN: async (data) => {
+        return await axios.post(`${config.API_URL}/services/usr/check-update-crn`, data);
+    },
+    refreshToken: async (data, token) => {
+        var axosConfig = {
+            method: 'post',
+            url: `${config.API_URL}/services/usr/refresh-token`,
+            headers: {
+                'Authorization': `AuthToken ${token}`,
+                'Content-Type': 'application/json'
+            },
+            data: data
+        };
+
+        return await axios(axosConfig);
+    },
+    netverifyInitiate: async (data, token) => {
+        var axosConfig = {
+            method: 'post',
+            url: `${config.API_URL}/services/verification/netverify-initiate`,
+            headers: {
+                'Authorization': `AuthToken ${token}`,
+                'Content-Type': 'application/json'
+            },
+            data: data
+        };
+
+        return await axios(axosConfig);
+    },
+    netverifyResponse: async (data, token) => {
+        var axosConfig = {
+            method: 'post',
+            url: `${config.API_URL}/services/verification/netverify-response`,
+            headers: {
+                'Authorization': `AuthToken ${token}`,
+                'Content-Type': 'application/json'
+            },
+            data: data
+        };
+
+        return await axios(axosConfig);
+    },
+
+    netverifyCallbackResponse: async (data, token) => {
+        var axosConfig = {
+            method: 'post',
+            url: `${config.API_URL}/services/verification/netverify-callback-response`,
+            headers: {
+                'Authorization': `AuthToken ${token}`,
+                'Content-Type': 'application/json'
+            },
+            data: data
+        };
+
+        return await axios(axosConfig);
+    }
+}
