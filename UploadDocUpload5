@@ -1,0 +1,336 @@
+import CustomInput from "../../../reusable/CustomInput";
+import FloatInput from "../../../reusable/FloatInput";
+import Main from "../Layouts/Main";
+import { DatePicker, Form, message, Modal, notification, Select, Spin, Upload } from "antd";
+import { useEffect, useReducer, useState } from "react";
+import useHttp from "../../../hooks/useHttp";
+import { GuestAPI } from "../../../apis/GuestAPI";
+import Back_arrow from "../../../assets/images/click2remit/Back_arrow.svg";
+import { useNavigate } from "react-router-dom";
+import { ViAmericaAuthAPI } from "../../../apis/ViAmericaApi/Auth";
+import { useSelector } from "react-redux";
+import { inputValidations } from "../../../services/validations/validations";
+import moment from "moment";
+import { ProfileAPI } from "../../../apis/ProfileAPI";
+const getBase64 = (file) =>
+  new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = (error) => reject(error);
+  });
+const UploadDocUpload = () => {
+  const [state, setState] = useReducer((state, newState) => ({ ...state, ...newState }), {
+    uniqueIdentifierLists: [],
+    doc: {},
+    imageURL: "",
+    issueDate: "",
+    expiryDate: "",
+    uploadStop: false,
+  });
+  const navigate = useNavigate();
+  const [loader, setLoader] = useState(0);
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [previewImage, setPreviewImage] = useState("");
+  const [previewTitle, setPreviewTitle] = useState("");
+  const AuthReducer = useSelector((state) => state.user);
+  const [fileList, setFileList] = useState([]);
+  const { Option } = Select;
+  const [form] = Form.useForm();
+  useEffect(() => {
+    getUniqueIdentifierNames();
+  }, []);
+
+  const hookGetUniqueIdentifierList = useHttp(GuestAPI.uniqueIdentifierList);
+  const hookUserDocUploadVia = useHttp(ViAmericaAuthAPI.userDocUpload);
+  const hookUserDocUpload = useHttp(ProfileAPI.userDocUpload);
+
+  const getUniqueIdentifierNames = async () => {
+    let payload = {
+      requestType: "UNNAMESLIST",
+      countryCode: AuthReducer.recvCountryCode,
+      idFor: "RECV",
+    };
+    setLoader((prevState) => prevState + 1);
+    hookGetUniqueIdentifierList.sendRequest(payload, function (data) {
+      setLoader((prevState) => prevState - 1);
+      if (data.status === "S") {
+        setState({ uniqueIdentifierLists: data.responseData });
+      }
+    });
+  };
+
+  const onFinish = (value) => {
+    let uploadSucessCounter = 0;
+    fileList.forEach((doc) => {
+      let docPayload = {
+        requestType: "USERDOCUPLOAD",
+        userId: AuthReducer.userID,
+        docType: value.idtype,
+        docName: doc.name,
+        docExtension: doc.name.split(".").pop(),
+        document: doc.thumbUrl, //image in base 64
+        docIssueDate: state.issueDate,
+        docExpiryDate: state.expiryDate,
+        docIdOrigin: "",
+        docIdNumber: value.id_number, //document number
+      };
+
+      setLoader((prevState) => prevState + 1);
+      hookUserDocUpload.sendRequest(docPayload, function (data) {
+        setLoader((prevState) => prevState - 1);
+        if (data.status == "S") {
+          const payload = {
+            requestType: "USERDOCUPLOAD",
+            imageToUpload: doc.thumbUrl,
+            iddoc: value.id_number,
+            userId: AuthReducer.userID,
+          };
+          setLoader((prevState) => prevState + 1);
+          hookUserDocUploadVia.sendRequest(payload, function (data) {
+            setLoader((prevState) => prevState - 1);
+            if (data.status === "S") {
+              uploadSucessCounter++;
+              if (uploadSucessCounter === fileList.length) {
+                notification.success({ message: "File has been submitted successfully" });
+                navigate("/new-transaction");
+              }
+            } else {
+              notification.error({ message: data.errorMessage });
+            }
+          });
+        } else {
+          notification.error({ message: data.errorMessage });
+        }
+      });
+    });
+  };
+
+  const onRemove = () => {
+    setState({
+      doc: {},
+    });
+  };
+  const handleCancel = () => setPreviewOpen(false);
+
+  const handlePreview = async (file) => {
+    if (!file.url && !file.preview) {
+      file.preview = await getBase64(file.originFileObj);
+    }
+    setPreviewImage(file.url || file.preview);
+    setPreviewOpen(true);
+    setPreviewTitle(file.name || file.url.substring(file.url.lastIndexOf("/") + 1));
+  };
+  const onChangeFileList = ({ fileList: newFileList }) => {
+    setFileList(newFileList);
+  };
+  return (
+    // <div className="UserDocUpload">
+    <Main>
+      <div className="container h-100">
+        <div className="row h-100">
+          <div
+            className="align-self-center col-lg-7 col-md-7 col-sm-12 "
+            style={{ marginRight: "auto" }}
+          >
+            <div className="CR-default-box  CR-max-width-620">
+              <Spin spinning={loader === 0 ? false : true}>
+                <Form
+                  form={form}
+                  onFinish={(value) => {
+                    fileList.length == 0
+                      ? form.setFields([{ name: "document", errors: ["Please upload document"] }])
+                      : onFinish(value);
+                  }}
+                >
+                  <div className="CR-side-space">
+                    <h4 className="text-black CR-font-28 mb-1">User Document Upload</h4>
+
+                    <div className="mt-3">
+                      <CustomInput showLabel={false} name="idtype" label="Id Type" required>
+                        <FloatInput type="select" placeholder="Select ID Type" showSearch>
+                          {state.uniqueIdentifierLists.map((uiRow, i) => {
+                            return (
+                              <Option key={i} value={uiRow.docType}>{`${uiRow.docName}`}</Option>
+                            );
+                          })}
+                        </FloatInput>
+                      </CustomInput>
+                      <CustomInput
+                        showLabel={false}
+                        name="id_number"
+                        label="Document Number"
+                        validationRules={[
+                          ({ getFieldValue }) => ({
+                            validator(rule, value) {
+                              let message = "";
+                              let obj = inputValidations.documentIdNumber(value ? value : "");
+                              message = obj.message;
+                              if (obj.status === "S") {
+                                return Promise.resolve();
+                              }
+                              return Promise.reject(message);
+                            },
+                          }),
+                          {
+                            pattern: /^[A-Za-z0-9 ]+$/,
+                            message: "Special Characters not allowed",
+                          },
+                        ]}
+                        // min={3}
+                        // max={20}
+                        // validationRules={[
+                        //   {
+                        //     pattern: /^[A-Za-z0-9 ]+$/,
+                        //     message: "Special Characters not allowed",
+                        //   },
+                        //   {
+                        //     pattern: /^(0|[1-9][0-9]*)$/,
+                        //     message: "Only numeric allowed",
+                        //   },
+                        // ]}
+                        // required
+                      >
+                        <FloatInput placeholder="Document Number" />
+                      </CustomInput>
+                      <CustomInput
+                        showLabel={false}
+                        label="Document Issue Date"
+                        name="docIssueDate"
+                        required
+                      >
+                        <FloatInput
+                          placeholder="Document Issue Date"
+                          type="datepicker"
+                          // defaultPickerValue={moment().subtract(18, "years")}
+                          // disabledDate={(d) => d.isAfter(moment().subtract(18, "years"))}
+                          disabledDate={(current) => current.isAfter(moment().toDate())}
+                          onChange={(value, dateString) => {
+                            value !== null
+                              ? setState({ issueDate: dateString })
+                              : setState({ issueDate: "" });
+                          }}
+                        />
+                        {/* <FloatInput type="text" placeholder="Enter Dob" disabled={true} /> */}
+                      </CustomInput>
+                      <CustomInput showLabel={false} name="expiryDate" label="ExpiryDate" required>
+                        <FloatInput
+                          type="datepicker"
+                          placeholder="Select Expiry"
+                          size="large"
+                          disabledDate={(current) => current.isBefore(moment().toDate())}
+                          onChange={(value, dateString) => {
+                            value !== null
+                              ? setState({ expiryDate: dateString })
+                              : setState({ expiryDate: "" });
+                          }}
+                          // onChange={(value, dateString) => {
+                          //   let formatedDate = moment(dateString).format("MM/DD/YYYY");
+                          //   value !== null
+                          //     ? setState({ additionalInfo2: formatedDate })
+                          //     : setState({ additionalInfo2: "" });
+                          // }}
+                        ></FloatInput>
+                      </CustomInput>
+                      <div className="d-flex align-items-end">
+                        <CustomInput
+                          className="mb-2"
+                          wrapperCol={{ span: 24 }}
+                          name="document"
+                          valuePropName="fileList"
+                          // getValueFromEvent={normFile}
+                          label="Document"
+                          showLabel={false}
+                          required
+                        >
+                          <Upload
+                            name="logo"
+                            listType="picture-card"
+                            className="avatar-uploader"
+                            accept="image/jpg, image/jpeg, image/png"
+                            showUploadList={true}
+                            fileList={fileList}
+                            multiple={true}
+                            onChange={(e) => {
+                              !state.uploadStop && onChangeFileList(e);
+                            }}
+                            maxCount={5}
+                            onPreview={handlePreview}
+                            onRemove={onRemove}
+                            beforeUpload={(file) => {
+                              const isLt3MB = file.size;
+                              if (isLt3MB >= "3145728") {
+                                setState({ uploadStop: true });
+                                message.error("Document upload size limit maximum of 3MB!");
+                                return false;
+                              } else if (file.type.includes("application/pdf")) {
+                                message.error("Pdf not supported !");
+                                return false;
+                              } else {
+                                setState({ uploadStop: false });
+                                const fileName = file.name;
+                                const fileType = file.type;
+                                const reader = new FileReader();
+                                reader.onload = (e) => {
+                                  setState({
+                                    doc: { fileName, fileType, docUrl: e.target.result },
+                                  });
+                                };
+                                reader.readAsDataURL(file);
+                                return false;
+                              }
+                            }}
+                            //   onChange={handleChange}
+                          >
+                            {/* {state.doc.docUrl && (
+                          <img src={state.doc.docUrl} alt="avatar" width="100%" height="100%" />
+                        )} */}
+                            {/* {!state.doc.docUrl && "Upload"} */}
+                            {fileList.length < 5 && "+ Upload"}
+                          </Upload>
+                        </CustomInput>
+                        <div style={{ marginBottom: "12px" }}>
+                          allowed file types are jpg ,jpeg and png, file size upto 3 MB.
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="bottom_panel">
+                    <div className="d-flex justify-content-between align-items-center gap-3 gap-md-5">
+                      <div
+                        className="Back_arrow d-flex align-items-center"
+                        onClick={() => {
+                          navigate("/new-transaction");
+                        }}
+                      >
+                        <img src={Back_arrow} alt="backArrow" /> Back
+                      </div>
+                      <button
+                        style={{ maxWidth: "17rem" }}
+                        htmlType="submit"
+                        className=" CR-primary-btn"
+                      >
+                        Continue
+                      </button>
+                    </div>
+                  </div>
+                </Form>
+              </Spin>
+            </div>
+          </div>
+        </div>
+      </div>
+      <Modal open={previewOpen} title={previewTitle} footer={null} onCancel={handleCancel}>
+        <img
+          alt="example"
+          style={{
+            width: "100%",
+          }}
+          src={previewImage}
+        />
+      </Modal>
+    </Main>
+    // </div>
+  );
+};
+export default UploadDocUpload;
