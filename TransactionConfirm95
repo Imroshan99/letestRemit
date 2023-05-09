@@ -1,0 +1,343 @@
+import React, { useEffect, useReducer, useRef, useState } from "react";
+import Swal from "sweetalert2";
+import { Form, Checkbox, Row, Col, notification } from "antd";
+import { Link } from "@mui/material";
+import BackArrow from "../../../../assets/images/click2remit/Back_arrow.svg";
+import editsvg from "../../../../assets/images/click2remit/Edit.svg";
+import { useSelector } from "react-redux";
+import TCModal from "../../../../containers/ModalBox/TCModal";
+import { EditOutlined } from "@ant-design/icons";
+import { ProfileAPI } from "../../../../apis/ProfileAPI";
+import useHttp from "../../../../hooks/useHttp";
+import VerifyOtp from "../../containers/VerifyOtp";
+import Spinner from "../../../../reusable/Spinner";
+import KycPage from "../../Pages/KYC";
+
+export default function TransactionConfirm(props) {
+  const pdfRef = useRef(null);
+  const AuthReducer = useSelector((state) => state.user);
+  const [form] = Form.useForm();
+  const [loader, setLoader] = useState(false);
+  const [redirectKYC, setRedirectKYC] = useState(false);
+  const [state, setState] = useReducer((state, newState) => ({ ...state, ...newState }), {
+    tcModalVisible: false,
+    _isShowOTPBOX: false,
+    verificationToken: "",
+  });
+  const hookSendOtp = useHttp(ProfileAPI.sendOTP);
+  const hookGetSenderKycDetails = useHttp(ProfileAPI.getSenderKycDetails);
+  const hookViaUpdateSender = useHttp(ProfileAPI.viaUpdateSender);
+
+  const onClickSendMoney = () => {
+    if (props.state.isSelectedBankTransfer) {
+      if (props.state._isScheduleTransaction == true) {
+        props.bookScheduleTransaction();
+      } else {
+        props.bookTransaction();
+      }
+    } else {
+      Swal.fire({
+        text: "You will now be redirected to a third party payment gateway using PGP encryption to protect the privacy of your details. Once you have successfully completed the transfer of funds you will receive a transaction notice indicating the status of the debit from your account and a reference number will be generated and displayed to you.",
+        // showDenyButton: true,
+        showCancelButton: true,
+        denyButtonText: `Cancel`,
+        confirmButtonText: "Confirm",
+        confirmButtonColor: "#2dbe60",
+      }).then((result) => {
+        /* Read more about isConfirmed, isDenied below */
+        if (result.isConfirmed) {
+          if (props.state._isScheduleTransaction == true) {
+            props.bookScheduleTransaction();
+          } else {
+            props.bookTransaction();
+          }
+        } else if (result.isDenied) {
+          Swal.fire("Changes are not saved", "", "info");
+        }
+      });
+    }
+  };
+  const sendOTPforTransaction = () => {
+    const payload = {
+      requestType: "SENDOTP",
+      otpService: "EMAIL",
+      otpType: "TX",
+      userId: AuthReducer.userID,
+      otpOption: "SM",
+    };
+    setLoader(true);
+    hookSendOtp.sendRequest(payload, function (data) {
+      setLoader(false);
+      if (data.status == "S") {
+        notification.success({ message: "OTP has been sent to your registered email address." });
+        setState({
+          verificationToken: data.verificationToken,
+          _isShowOTPBOX: true,
+        });
+      } else {
+        notification.error({ message: data.errorMessage ? data.errorMessage : "Send OTP failed." });
+      }
+    });
+  };
+  const getSenderKycDetails = () => {
+    const payload = {
+      requestType: "SENDERKYCDTLS",
+      userId: AuthReducer.userID,
+    };
+    setLoader(true);
+    hookGetSenderKycDetails.sendRequest(payload, function (data) {
+      setLoader(false);
+      if (data.status == "S") {
+        if (data.isViaKycDone === "N") {
+          viaUpdateSender();
+        } else {
+          sendOTPforTransaction();
+        }
+      } else {
+        notification.error({
+          message: data.errorMessage ? data.errorMessage : "Get Sender KYC details failed",
+        });
+      }
+    });
+  };
+  const viaUpdateSender = () => {
+    let payload = {
+      clientId: "VIAMERICAS",
+      requestType: "VIAUPDATESENDER",
+      sendCountry: AuthReducer.sendCountryCode,
+      userId: AuthReducer.userID,
+    };
+    setLoader(true);
+    hookViaUpdateSender.sendRequest(payload, function (data) {
+      setLoader(false);
+      if (data.status == "S") {
+        sendOTPforTransaction();
+      } else {
+        setRedirectKYC(true);
+        props.setState({ viewTarnsaction: false });
+      }
+    });
+  };
+  const handleTcModal = () => {
+    setState({ tcModalVisible: true });
+  };
+
+  return (
+    <>
+      {state._isShowOTPBOX ? (
+        <VerifyOtp
+          setLoader={setLoader}
+          // ViaCalculateCost={props.ViaCalculateCost}
+          bookTransaction={props.bookTransaction}
+          state={state}
+          setState={setState}
+          transactionState={props.state}
+        />
+      ) : props.state.viewTarnsaction ? (
+        <div className="container h-100">
+          <div className="row h-100 justify-content-center">
+            <div
+              className="align-self-center col-lg-7 col-md-7 col-sm-12 "
+              style={{ marginRight: "auto" }}
+            >
+              <div className="CR-default-box CR-max-width-620">
+                <Spinner spinning={loader}>
+                  <ul className="row CR-side-space">
+                    {state.tcModalVisible && <TCModal state={state} setState={setState} />}
+                    <li className="back-arrow-nav   d-xs-block d-done">
+                      <img src={BackArrow} alt="BackArrow" />
+                    </li>
+
+                    <li className="col-md-12 col-sm-12 col-lg-12 ">
+                      <h4 className="text-black CR-font-28 mb-1">Review Transaction details</h4>
+                    </li>
+                    <li className="col-md-12 col-sm-12 col-lg-12">
+                      <p className="text-left CR-font-16">Check your transaction details.</p>
+                    </li>
+                    <li className="col-md-12 col-sm-12 col-lg-12 my-2">
+                      <div className="align-items-center cr_greyTitle d-flex justify-content-between">
+                        <p className="mb-0">Edit Transaction</p>
+                        <span className="editcolor" onClick={() => props.setState({ isStep: 1 })}>
+                          <img src={editsvg} width="17px" height="17px" className="me-1" />
+                          EDIT
+                        </span>
+                      </div>
+                    </li>
+                    <li className="col-md-12 col-sm-12 col-lg-12 my-2">
+                      <ul className="row">
+                        <li className="col-md-12 col-sm-12 col-lg-12 my-2">
+                          <div className="align-items-center d-flex justify-content-between CR-border-bottom">
+                            <label className="CR-font-16 text-left">Today's Date</label>
+                            <p className="CR-font-16 text-right CR-black-text CR-fw-500">
+                              {props.state.initiateDate}
+                            </p>
+                          </div>
+                        </li>
+                        <li className="col-md-12 col-sm-12 col-lg-12 my-2">
+                          <div className="align-items-center d-flex justify-content-between CR-border-bottom">
+                            <label className="CR-font-16 text-left">Sender Name</label>
+                            <p className="CR-font-16 text-right CR-black-text CR-fw-500">
+                              {/* {props.state.senderName} */}
+                              {AuthReducer.userFullName}
+                            </p>
+                          </div>
+                        </li>
+                        {props.state.isSelectedBankTransfer && (
+                          <li className="col-md-12 col-sm-12 col-lg-12 my-2">
+                            <div className="align-items-center d-flex justify-content-between CR-border-bottom">
+                              <label className="CR-font-16 text-left">Source Account</label>
+                              <p className="CR-font-16 text-right CR-black-text CR-fw-500">
+                                {props.state.accountNo}
+                              </p>
+                            </div>
+                          </li>
+                        )}
+                        <li className="col-md-12 col-sm-12 col-lg-12 my-2">
+                          <div className="align-items-center d-flex justify-content-between CR-border-bottom">
+                            <label className="CR-font-16 text-left">
+                              Amount To Be Sent <br />
+                              (inclusive of taxes and discounts)
+                            </label>
+                            <p className="CR-font-16 text-right CR-black-text CR-fw-500">
+                              {AuthReducer.sendCurrencyCode} {props.state.sendAmount}
+                            </p>
+                          </div>
+                        </li>
+                        <li className="col-md-12 col-sm-12 col-lg-12 my-2">
+                          <div className="align-items-center d-flex justify-content-between CR-border-bottom">
+                            <label className="CR-font-16 text-left">Transfer Fee</label>
+                            <p className="CR-font-16 text-right CR-black-text CR-fw-500">
+                              {AuthReducer.sendCurrencyCode} {props.state.totalFee}
+                            </p>
+                          </div>
+                        </li>
+                        {/* <li className="col-md-12 col-sm-12 col-lg-12 my-2">
+                        <div className="align-items-center d-flex justify-content-between ">
+                          <label className="CR-font-16 text-left"></label>
+                          <small
+                            className="text-danger"
+                            role="button"
+                            onClick={() => props.setIsModalVisible(true)}
+                          >
+                            View Breakup
+                          </small>
+                        </div>
+                      </li> */}
+                      </ul>
+                    </li>
+                    <li className="col-md-12 col-sm-12 col-lg-12 my-2">
+                      <div className="align-items-center cr_greyTitle d-flex justify-content-between">
+                        <p className="mb-0">Recipient</p>
+                        <span className="editcolor" onClick={() => props.setState({ isStep: 1 })}>
+                          <img src={editsvg} width="17px" height="17px" className="me-1" />
+                          EDIT
+                        </span>
+                      </div>
+                    </li>
+                    <li className="col-md-12 col-sm-12 col-lg-12 my-2">
+                      <ul className="row">
+                        <li className="col-md-12 col-sm-12 col-lg-12 my-2">
+                          <div className="align-items-center d-flex justify-content-between CR-border-bottom">
+                            <label className="CR-font-16 text-left">
+                              Estimated Date Of Delivery
+                            </label>
+                            <p className="CR-font-16 text-right CR-black-text CR-fw-500">
+                              {props.state.expectedDelivery}
+                            </p>
+                          </div>
+                        </li>
+                        <li className="col-md-12 col-sm-12 col-lg-12 my-2">
+                          <div className="align-items-center d-flex justify-content-between CR-border-bottom">
+                            <label className="CR-font-16 text-left">Recipient Name</label>
+                            <p className="CR-font-16 text-right CR-black-text CR-fw-500">
+                              {props.state.receiverName}
+                            </p>
+                          </div>
+                        </li>
+                        <li className="col-md-12 col-sm-12 col-lg-12 my-2">
+                          <div className="align-items-center d-flex justify-content-between CR-border-bottom">
+                            <label className="CR-font-16 text-left">
+                              Purpose Of Money Transfer
+                            </label>
+                            <p className="CR-font-16 text-right CR-black-text CR-fw-500 text-end">
+                              {props.state.purposeName}
+                            </p>
+                          </div>
+                        </li>
+                        <li className="col-md-12 col-sm-12 col-lg-12 my-2">
+                          <div className="align-items-center d-flex justify-content-between CR-border-bottom">
+                            <label className="CR-font-16 text-left">Recipient Bank Account</label>
+                            <p className="CR-font-16 text-right CR-black-text CR-fw-500">
+                              {props.state.receiverAccount}
+                            </p>
+                          </div>
+                        </li>
+                        <li className="col-md-12 col-sm-12 col-lg-12 my-2">
+                          <div className="align-items-center d-flex justify-content-between CR-border-bottom">
+                            <label className="CR-font-16 text-left">Amount To Be Recieved*</label>
+                            <p className="CR-font-16 text-right CR-black-text CR-fw-500">
+                              {AuthReducer.recvCurrencyCode} {props.state.recvAmount}
+                            </p>
+                          </div>
+                        </li>
+                        <small>
+                          * Recipient may receive less due to fees charged by the recipient’s bank
+                          or foreign taxes
+                        </small>
+                      </ul>
+                    </li>
+                  </ul>
+                  <Form onFinish={getSenderKycDetails}>
+                    {/* <div className="checkboxtc">
+                    <Form.Item
+                      className="form-item"
+                      name="readTermsConditions"
+                      valuePropName="checked"
+                      rules={[
+                        {
+                          validator: (_, value) =>
+                            value
+                              ? Promise.resolve()
+                              : Promise.reject(new Error("Please confirm terms and conditions.")),
+                        },
+                      ]}
+                    >
+                      <Checkbox>
+                        I acknowledge that I have read, understood and I agree to the{" "}
+                        <a href="javascript:void(0)" onClick={handleTcModal}>
+                          Terms &amp; Conditions
+                        </a>
+                        .
+                      </Checkbox>
+                    </Form.Item>
+                  </div> */}
+                    <div className="bottom_panel">
+                      <div className="d-flex justify-content-between align-items-baseline">
+                        <span className="Back_arrow" onClick={() => props.setState({ isStep: 1 })}>
+                          {" "}
+                          <img src={BackArrow} alt="" />
+                          Back
+                        </span>
+                        <button
+                          htmlType="submit"
+                          // onClick={sendOTPforTransaction}
+                          className="btn btn-primary CR-primary-btn"
+                          style={{ width: "100px", margin: "0 !important" }}
+                          disabled={props.state.exRateToken === "" ? true : false}
+                        >
+                          Proceed
+                        </button>
+                      </div>
+                    </div>
+                  </Form>
+                </Spinner>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : (
+        <KycPage redirectKYC={redirectKYC} setState={props.setState} fromReview={true} />
+      )}
+    </>
+  );
+}
