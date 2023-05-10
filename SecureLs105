@@ -1,0 +1,38 @@
+// import SecureLS from "secure-ls";
+
+// class SecureStorage extends SecureLS {
+//   constructor(config) {
+//     super(config);
+//     // tslint:disable-next-line:ban-ts-ignore
+//     // @ts-ignore
+//     super.ls = config.useSessionStore ? sessionStorage : localStorage;
+//   }
+// }
+
+// const ls = new SecureStorage({
+//   encodingType: "",
+//   isCompression: false,
+//   // encodingType: "aes",
+//   // encryptionSecret: "&&&**&*Y5656555#@#2^",
+//   useSessionStore: sessionStorage,
+// });
+export function setSessionStorage(key, value) {
+  window.sessionStorage.setItem(key, value); // session so window.session function
+}
+
+export function getSessionStorage(key) {
+  return window.sessionStorage.getItem(key);
+}
+
+export function removeSessionStorage(key) {
+  window.sessionStorage.removeItem(key);
+}
+
+export function removeAllSessionStorage() {
+  // ls.removeAll()
+  for (let i = 0; i < window.sessionStorage.length; i++) {
+    const key = window.sessionStorage.key(i);
+    window.sessionStorage.removeItem(key);
+  }
+
+}
