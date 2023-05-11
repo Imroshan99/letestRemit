@@ -1,0 +1,775 @@
+import React, { useEffect, useReducer, useState } from "react";
+import Main from "../Layouts/Main";
+import BackArrow from "../../../assets/images/click2remit/Back_arrow.svg";
+import { AutoComplete, DatePicker, Form, Input, notification, Select } from "antd";
+import useHttp from "../../../hooks/useHttp";
+import { ProfileAPI } from "../../../apis/ProfileAPI";
+import { useSelector } from "react-redux";
+import CustomInput from "../../../reusable/CustomInput";
+import FloatInput from "../../../reusable/FloatInput";
+import moment from "moment";
+import { GuestAPI } from "../../../apis/GuestAPI";
+import { inputValidations } from "../../../services/validations/validations";
+import { useNavigate } from "react-router-dom";
+import Swal from "sweetalert2";
+import Spinner from "../../../reusable/Spinner";
+import VerifyOtp from "../containers/VerifyOtp";
+import { validateEmailId } from "../../../services/validations/email";
+
+const EditProfileDetails = (props) => {
+  const { Option } = Select;
+  const [form] = Form.useForm();
+  const navigate = useNavigate();
+
+  const AuthReducer = useSelector((state) => state.user);
+
+  const hookGetProfile = useHttp(ProfileAPI.getProfile);
+  const hookEditProfile = useHttp(ProfileAPI.editProfile);
+  const hookGetCountryPhoneCodes = useHttp(GuestAPI.getCountryPhoneCodes);
+  const hookGetCountryStates = useHttp(GuestAPI.countryStates);
+  const hookGetStateCities = useHttp(GuestAPI.stateCities);
+  const hookSendOtp = useHttp(ProfileAPI.sendOTP);
+  const hookEditSenderContactdtls = useHttp(ProfileAPI.editSenderContactdtls);
+  const [editPage, setEditPage] = useState(true);
+  const [loader, setLoader] = useState(false);
+  const hookEditProfileContact = useHttp(ProfileAPI.editProfileContact);
+
+  const [state, setState] = useReducer((state, newState) => ({ ...state, ...newState }), {
+    firstName: "",
+    middleName: "",
+    lastName: "",
+    dob: "",
+    mobileNo: "",
+    emailId: "",
+    address1: "",
+    address2: "",
+    // address3: "",
+    mobilePhoneCode: "",
+    zip: "",
+    phoneCodes: [],
+    cityLists: [],
+    stateLists: [],
+    verificationToken: "",
+    profileValues: {},
+  });
+
+  useEffect(() => {
+    // getProfile();
+    getCoutryCodes();
+    getStateLists();
+  }, []);
+  useEffect(() => {
+    getProfile();
+  }, [state.stateLists]);
+
+  const getProfile = () => {
+    let payload = {
+      requestType: "LEAD",
+      userId: AuthReducer.userID,
+    };
+    setLoader((prevState) => prevState + 1);
+    hookGetProfile.sendRequest(payload, function (data) {
+      setLoader((prevState) => prevState - 1);
+      if (data.status == "S") {
+        // setState({
+        //     firstName: data.firstName,
+        //     middleName: data.middleName,
+        //     lastName: data.lastName,
+        //     emailId: data.emailId,
+        //     dob: data.dob,
+        //     mobileNo: data.mobileNo,
+        //     mobilePhoneCode:data.mobilePhoneCode,
+        //     address1: data.address1,
+        //     address2: data.address2,
+        //     address3:data.address3,
+        //     zip: data.zip,
+        // });
+        setState({ dob: data.dob });
+        let senderState = "";
+        state.stateLists.filter((stateData) => {
+          if (data.state == stateData.stateCode || data.state == stateData.state) {
+            senderState = stateData.state;
+          }
+        });
+        form.setFieldsValue({
+          firstName: data.firstName,
+          dob: data.dob,
+          middleName: data.middleName,
+          lastName: data.lastName,
+          crn: data.cif,
+          mobileNo: data.mobileNo,
+          mobileCountryCode: data.mobilePhoneCode,
+          email: data.emailId,
+          address1: data.address1,
+          address2: data.address2,
+          // address3: data.address3,
+          zip: data.zip,
+          state: senderState,
+          city: data.city,
+        });
+      } else {
+        notification.error({
+          message: data.errorMessage ? data.errorMessage : "Get Profile failed.",
+        });
+      }
+    });
+  };
+
+  const getStateLists = async () => {
+    let payload = {
+      requestType: "STATELIST",
+      countryCode: "US",
+      keyword: "",
+    };
+    setLoader((prevState) => prevState + 1);
+    hookGetCountryStates.sendRequest(payload, function (data) {
+      setLoader((prevState) => prevState - 1);
+      if (data.status === "S") {
+        let activeState = data.responseData.filter((state) => {
+          return state.isActive == "Y";
+        });
+        setState({ stateLists: activeState });
+        // const stateIssuerArray = [...data.responseData];
+        // setState({ stateListsIssuer: stateIssuerArray });
+      } else {
+        notification.error({
+          message: data.errorMessage ? data.errorMessage : "Get Country state failed.",
+        });
+      }
+    });
+  };
+  const onSelectStateHandler = async (stateCode) => {
+    form.setFieldsValue({ city: "" });
+    const cityPayload = {
+      requestType: "CITILIST",
+      countryCode: AuthReducer.sendCountryCode,
+      countryCode: "US",
+      stateCode: stateCode,
+    };
+    setLoader((prevState) => prevState + 1);
+    hookGetStateCities.sendRequest(cityPayload, function (data) {
+      setLoader((prevState) => prevState - 1);
+      if (data.status === "S") {
+        setState({
+          cityLists: data.responseData,
+        });
+      } else {
+        notification.error({
+          message: data.errorMessage ? data.errorMessage : "Get State cities failed.",
+        });
+        setState({
+          cityLists: [],
+        });
+      }
+    });
+  };
+
+  const getCoutryCodes = async () => {
+    if (AuthReducer.groupId === "XR") {
+      setState({
+        phoneCodes: [
+          { countryPhoneCode: 44, countryName: "United Kingdom" },
+          { countryPhoneCode: 91, countryName: "India" },
+        ],
+        selectPhoneCodes: true,
+      });
+    } else {
+      const payload = {
+        requestType: "COUNTRYPHONECODE",
+      };
+      setLoader((prevState) => prevState + 1);
+      hookGetCountryPhoneCodes.sendRequest(payload, function (data) {
+        setLoader((prevState) => prevState - 1);
+        if (data.status == "S") {
+          let _recvCountryCode = data.responseData.filter(
+            (item) => item.countryCode === AuthReducer.recvCountryCode,
+          );
+          setState({
+            phoneCodes: [
+              { countryPhoneCode: 1, countryName: "United States" },
+              // { countryPhoneCode: 91, countryName: "India" },
+            ],
+          });
+          // setState({
+          //   phoneCodes: data.responseData,
+          //   selectPhoneCodes: false,
+          // });
+        }
+      });
+    }
+  };
+  const submitHandler = (value) => {
+    setState({ profileValues: value });
+    const payload = {
+      requestType: "SENDOTP",
+      // otpType: "RA",
+      otpService: "EMAIL",
+      otpType: "EP",
+      userId: AuthReducer.userID,
+      otpOption: "SM",
+
+      // mobilePhoneCode: state.mobilePhoneCode,
+      // mobileNo: state.mobileNo,
+      // emailId: state.emailId,
+      // senderName: "",
+    };
+    setLoader((prevState) => prevState + 1);
+    hookSendOtp.sendRequest(payload, function (data) {
+      setLoader((prevState) => prevState - 1);
+      if (data.status == "S") {
+        notification.success({ message: "OTP has been sent to your registered email address." });
+        setState({
+          verificationToken: data.verificationToken,
+        });
+        setEditPage(false);
+      }
+      // if (state.twofa === "Y") {
+    });
+    // }
+  };
+  const editProfile = async (value, verifiedToken) => {
+    const contactData = {
+      clientId: "VIAMERICAS",
+      address: state.profileValues.address1,
+      requestType: "EDITPROFILECONTACT",
+      altMobileNo: "",
+      city: state.profileValues.city,
+      // groupId: "IFR",
+      phoneCityCode: "",
+      mobileNo: state.profileValues.mobileNo,
+      userId: AuthReducer.userID,
+      sendCountry: AuthReducer.sendCountryCode,
+      altMobilePhoneCode: "",
+      postCode: state.profileValues.zip,
+      isMobileVerified: "",
+      region: state.profileValues.state, //state
+      mobilePhoneCode: state.profileValues.mobileCountryCode,
+      altEmailId: "",
+      emailId: state.profileValues.email,
+      address2: state.profileValues.address2,
+    };
+    setLoader((prevState) => prevState + 1);
+    hookEditProfileContact.sendRequest(contactData, function (data) {
+      setLoader((prevState) => prevState - 1);
+      if (data.status == "S") {
+        props.getProfile();
+        props.setState({ profileComponent: true });
+        Swal.fire({
+          title: "Success",
+          text: data.message,
+          icon: "success",
+          confirmButtonColor: "#2dbe60",
+          allowOutsideClick: false,
+        }).then((result) => {
+          if (result.isConfirmed) {
+            navigate("/profile");
+          }
+        });
+        notification.success({ message: data.message });
+      } else {
+        notification.error({
+          message: data.errorMessage ? data.errorMessage : "Edit Profile contact failed.",
+        });
+      }
+    });
+
+    // const contactData = {
+    //   requestType: "editContactProfile",
+    //   areaCode: "",
+    //   emailId: state.profileValues.email,
+    //   mobilePhoneCode: state.profileValues.mobileCountryCode,
+    //   mobileNo: state.profileValues.mobileNo,
+    //   phoneNo: "",
+    //   sendCountryCode: AuthReducer.sendCountryCode,
+    //   verifiedToken: "",
+    //   userId: AuthReducer.userID,
+    //   twofa: "N", //for otp
+    // };
+    // setLoader((prevState) => prevState + 1);
+    // hookEditSenderContactdtls.sendRequest(contactData, function (data) {
+    //   setLoader((prevState) => prevState - 1);
+    //   console.log(state.dob, value.dob, "ppp");
+    //   if (data.status == "S") {
+    //     //   notification.success({ message: data.message });
+    //     const editProfileData = {
+    //       requestType: "EDITPROFILE",
+    //       address1: window.btoa(state.profileValues.address1),
+    //       address2: window.btoa(state.profileValues.address2),
+    //       // address3: window.btoa(state.profileValues.address3),
+    //       address4: "",
+    //       address5: "",
+    //       citizenship: "US",
+    //       city: window.btoa(state.profileValues.city),
+    //       commAddress1: "",
+    //       commAddress2: "",
+    //       commCity: "",
+    //       commCountry: "",
+    //       commPostalCode: "",
+    //       commStateProvince: "",
+    //       companyName: "",
+    //       dob: state.dob,
+    //       gender: "M",
+    //       homePhoneNo: "",
+    //       income: "1",
+    //       industry: "",
+    //       pageName: "EDITPROFILE",
+    //       pep: "",
+    //       primaryBusinessFunction: "",
+    //       profession: "1",
+    //       salutation: "",
+    //       sendCountry: AuthReducer.sendCountryCode,
+    //       state: window.btoa(state.profileValues.state),
+    //       tnc: "",
+    //       zipCode: state.profileValues.zip,
+    //       userId: AuthReducer.userID,
+    //     };
+    //     setLoader((prevState) => prevState + 1);
+    //     hookEditProfile.sendRequest(editProfileData, function (data) {
+    //       setLoader((prevState) => prevState - 1);
+    //       if (data.status == "S") {
+    //         props.getProfile();
+    //         props.setState({ profileComponent: true });
+    //         Swal.fire({
+    //           title: "Success",
+    //           text: data.message,
+    //           icon: "success",
+    //           confirmButtonColor: "#2dbe60",
+    //           allowOutsideClick: false,
+    //         }).then((result) => {
+    //           if (result.isConfirmed) {
+    //             navigate("/profile");
+    //           }
+    //         });
+    //         notification.success({ message: data.message });
+    //       } else {
+    //         notification.error({ message: data.errorMessage });
+    //       }
+    //     });
+    //   } else {
+    //     notification.error({ message: data.errorMessage });
+    //   }
+    // });
+  };
+  return (
+    <>
+      {editPage ? (
+        <div className="container h-100">
+          <div className="row h-100 justify-content-center">
+            <Form form={form} onFinish={submitHandler}>
+              <div
+                className="align-self-center col-lg-8 col-md-8 col-sm-12  "
+                style={{ marginRight: "auto" }}
+              >
+                <div className="CR-default-box CR-max-width-620">
+                  <Spinner spinning={loader === 0 ? false : true}>
+                    <ul className="row CR-side-space">
+                      <li className="back-arrow-nav   d-xs-block d-done">
+                        <img src={BackArrow} alt="" />
+                      </li>
+
+                      <li className="col-md-12 col-sm-12 col-lg-12 ">
+                        <h4 className="text-black CR-font-28 mb-1">Edit profile</h4>
+                      </li>
+                      <li className="col-md-12 col-sm-12 col-lg-12">
+                        <p className="text-left CR-font-16"></p>
+                      </li>
+                      <li className="col-md-12 col-sm-12 col-lg-12 my-2">
+                        <div className="align-items-center cr_greyTitle d-flex justify-content-between">
+                          <p className="mb-0">Personal information</p>
+                          {/* <!-- <a href="/#" className=""><img src="images/Edit.svg" width="17px" height="17px" className="me-1">EDIT</a> --> */}
+                        </div>
+                      </li>
+                      <li className="col-md-12 col-sm-12 col-lg-12 my-2">
+                        <ul className="row">
+                          <CustomInput
+                            showLabel={false}
+                            name="firstName"
+                            label="First Name"
+                            min={3}
+                            validationRules={[
+                              ({ getFieldValue }) => ({
+                                validator(rule, value) {
+                                  // validate space before and after string
+                                  let startSpace = /^\s/;
+                                  let endSpace = / $/;
+                                  if (startSpace.test(value) || endSpace.test(value)) {
+                                    return Promise.reject(
+                                      "Space not allow before and after first name.",
+                                    );
+                                  }
+
+                                  return Promise.resolve();
+                                },
+                              }),
+                              {
+                                pattern: /^[A-Za-z ]+$/,
+                                message: "Enter valid first name",
+                              },
+                            ]}
+                            required
+                          >
+                            <FloatInput placeholder="First name" disabled={true} />
+                          </CustomInput>
+                          <CustomInput
+                            showLabel={false}
+                            name="middleName"
+                            label="Middle Name"
+                            validationRules={[
+                              ({ getFieldValue }) => ({
+                                validator(rule, value) {
+                                  // validate space before and after string
+                                  let startSpace = /^\s/;
+                                  let endSpace = / $/;
+                                  if (startSpace.test(value) || endSpace.test(value)) {
+                                    return Promise.reject(
+                                      "Space not allow before and after middle name.",
+                                    );
+                                  }
+
+                                  return Promise.resolve();
+                                },
+                              }),
+                              {
+                                pattern: /^[A-Za-z ]+$/,
+                                message: "Enter valid middle name",
+                              },
+                            ]}
+                            min={1}
+                          >
+                            <FloatInput
+                              type="text"
+                              disabled={true}
+                              placeholder="Middle name (optional)"
+                            />
+                          </CustomInput>
+                          <CustomInput
+                            showLabel={false}
+                            name="lastName"
+                            label="Last Name"
+                            min={3}
+                            validationRules={[
+                              ({ getFieldValue }) => ({
+                                validator(rule, value) {
+                                  // validate space before and after string
+                                  let startSpace = /^\s/;
+                                  let endSpace = / $/;
+                                  if (startSpace.test(value) || endSpace.test(value)) {
+                                    return Promise.reject(
+                                      "Space not allow before and after last name.",
+                                    );
+                                  }
+
+                                  return Promise.resolve();
+                                },
+                              }),
+                              {
+                                pattern: /^[A-Za-z ]+$/,
+                                message: "Enter valid last name",
+                              },
+                            ]}
+                            required
+                          >
+                            <FloatInput type="text" disabled={true} placeholder="Last name" />
+                          </CustomInput>
+                          <CustomInput showLabel={false} label="Date of Birth" name="dob" required>
+                            {/* <DatePicker
+                                                size="large"
+                                                className="w-100"
+                                                defaultPickerValue={moment().subtract(18, "years")}
+                                                disabledDate={(d) =>
+                                                    !d ||
+                                                    d.isAfter(moment().subtract(18, "years")) ||
+                                                    d.isSameOrBefore("1900-01-01")
+                                                }
+                                                onChange={(value, dateString) => {
+                                                    value !== null
+                                                        ? setState({ dob: dateString })
+                                                        : setState({ dob: "" });
+                                                }}
+                                            /> */}
+                            <FloatInput disabled={true} type="text" placeholder="Date of Birth" />
+                          </CustomInput>
+                          <CustomInput
+                            showLabel={false}
+                            name="email"
+                            validationRules={[
+                              ({ getFieldValue }) => ({
+                                validator(rule, value) {
+                                  let message = "";
+                                  let obj = validateEmailId(value ? value : "");
+                                  message = obj.message;
+                                  if (obj.status === "S") {
+                                    return Promise.resolve();
+                                  }
+                                  return Promise.reject(message);
+                                },
+                              }),
+                            ]}
+                            label="Email address"
+                          >
+                            <FloatInput type="text" placeholder="Email address" disabled={true} />
+                          </CustomInput>
+
+                          <li class="col-md-12 col-sm-12 col-lg-12">
+                            <div className="row">
+                              <div className="col-12 col-md-5">
+                                <CustomInput
+                                  showLabel={false}
+                                  name="mobileCountryCode"
+                                  label="Select Phone Code"
+                                  required
+                                >
+                                  <FloatInput
+                                    type="select"
+                                    placeholder="Select Phone Code"
+                                    label="Phone Code"
+                                    name="mobileCountryCode"
+                                    required
+                                    //  size="small"
+                                    disabled={true}
+                                    showSearch
+                                    // value={selectValue}
+                                    // onChange={handleChange}
+                                  >
+                                    {state.phoneCodes.map((phoneCode, i) => {
+                                      return (
+                                        <Option
+                                          key={i}
+                                          value={phoneCode.countryPhoneCode}
+                                        >{`(${phoneCode.countryPhoneCode}) ${phoneCode.countryName}`}</Option>
+                                      );
+                                    })}
+                                  </FloatInput>
+                                </CustomInput>
+                              </div>
+                              <div className="col-12 col-md-7">
+                                <CustomInput
+                                  showLabel={false}
+                                  name="mobileNo"
+                                  label="Mobile Number"
+                                  validationRules={[
+                                    ...inputValidations.mobileNumber(AuthReducer.sendCountryCode),
+                                  ]}
+                                  required
+                                >
+                                  <FloatInput
+                                    type="text"
+                                    placeholder="Mobile Number"
+                                    disabled={true}
+                                  />
+                                </CustomInput>
+                              </div>
+                            </div>
+                          </li>
+                          <CustomInput
+                            showLabel={false}
+                            name="crn"
+                            validationRules={[
+                              {
+                                min: 3,
+                                max: 10,
+                                message: "CRN Number should be min 3 and max 10 digits",
+                              },
+                              {
+                                pattern: /^[0-9\b]+$/,
+                                message: "Only Numbers allowed",
+                              },
+                            ]}
+                            label="CRN"
+                          >
+                            <FloatInput disabled={true} type="text" placeholder="CRN" />
+                          </CustomInput>
+                        </ul>
+                      </li>
+                      <li className="col-md-12 col-sm-12 col-lg-12 my-2">
+                        <div className="align-items-center cr_greyTitle d-flex justify-content-between">
+                          <p className="mb-0">Communication details</p>
+                        </div>
+                      </li>
+                      <li className="col-md-12 col-sm-12 col-lg-12 my-2">
+                        <ul className="row">
+                          <CustomInput
+                            showLabel={false}
+                            name="address1"
+                            label="Address Line 1"
+                            validationRules={[
+                              ({ getFieldValue }) => ({
+                                validator(rule, value) {
+                                  let message = "";
+                                  let obj = inputValidations.validateAddress(value ? value : "");
+                                  message = obj.message;
+                                  if (obj.status === "S") {
+                                    return Promise.resolve();
+                                  }
+                                  return Promise.reject(message);
+                                },
+                              }),
+                            ]}
+                          >
+                            <FloatInput placeholder="Address Line 1" />
+                          </CustomInput>
+                          <CustomInput
+                            showLabel={false}
+                            name="address2"
+                            label="Address Line 2"
+                            validationRules={[
+                              ({ getFieldValue }) => ({
+                                validator(rule, value) {
+                                  let message = "";
+                                  let obj = inputValidations.validateAddress(value ? value : "");
+                                  message = obj.message;
+                                  if (obj.status === "S") {
+                                    return Promise.resolve();
+                                  }
+                                  return Promise.reject(message);
+                                },
+                              }),
+                            ]}
+                          >
+                            <FloatInput type="text" placeholder="Address Line 2" />
+                          </CustomInput>
+                          {/* <CustomInput
+                            showLabel={false}
+                            name="address3"
+                            label="Address Line 3"
+                            validationRules={[
+                              ({ getFieldValue }) => ({
+                                validator(rule, value) {
+                                  // validate space before and after string
+                                  let startSpace = /^\s/;
+                                  let endSpace = / $/;
+                                  if (startSpace.test(value) || endSpace.test(value)) {
+                                    return Promise.reject(
+                                      "Space not allow before and after address.",
+                                    );
+                                  }
+
+                                  return Promise.resolve();
+                                },
+                              }),
+                              ({ getFieldValue }) => ({
+                                validator(rule, value) {
+                                  const validStr =
+                                    ' abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ.0123456789/-?()",+#&_[]\n\r';
+                                  const charArray = value ? value : "";
+                                  const strLen = charArray.length;
+                                  for (let i = 0; i < strLen; i++) {
+                                    if (validStr.indexOf(charArray[i]) === -1) {
+                                      return Promise.reject("Please enter valid address formats.");
+                                    }
+                                  }
+
+                                  return Promise.resolve();
+                                },
+                              }),
+                              {
+                                min: 3,
+                                max: 100,
+                                message: "Address should be between 3 and 100 characters long.",
+                              },
+                            ]}
+                          >
+                            <FloatInput type="text" placeholder="Address Line 3" />
+                          </CustomInput> */}
+                          <CustomInput
+                            showLabel={false}
+                            name="zip"
+                            label="Zipcode"
+                            validationRules={[
+                              ...inputValidations.zipCode(AuthReducer.sendCountryCode),
+                              ({ getFieldValue }) => ({
+                                validator(rule, value) {
+                                  // validate space before and after string
+                                  let startSpace = /^\s/;
+                                  let endSpace = / $/;
+                                  if (startSpace.test(value) || endSpace.test(value)) {
+                                    return Promise.reject(
+                                      "Space not allowed before and after the Zipcode.",
+                                    );
+                                  }
+
+                                  return Promise.resolve();
+                                },
+                              }),
+                            ]}
+                            required
+                          >
+                            <FloatInput type="text" placeholder="Zipcode" />
+                          </CustomInput>
+                          <CustomInput name="state" label="State" showLabel={false} required>
+                            <FloatInput
+                              type="select"
+                              placeholder="State"
+                              autoComplete="none"
+                              className="w-100"
+                              onSelect={onSelectStateHandler}
+                              filterOption={(inputValue, option) =>
+                                option.value.toUpperCase().indexOf(inputValue.toUpperCase()) !== -1
+                              }
+                            >
+                              {state.stateLists.map((st, i) => {
+                                return <Option key={i} value={st.state}>{`${st.state}`}</Option>;
+                              })}
+                            </FloatInput>
+                          </CustomInput>
+                          <CustomInput name="city" label="City" showLabel={false} required>
+                            <FloatInput
+                              type="select"
+                              placeholder="City"
+                              //   autoComplete="none"
+                              className="w-100"
+                              filterOption={(inputValue, option) =>
+                                option.value.toUpperCase().indexOf(inputValue.toUpperCase()) !== -1
+                              }
+                            >
+                              {state.cityLists.map((st, i) => {
+                                return <Option key={i} value={st.city}>{`${st.city}`}</Option>;
+                              })}
+                            </FloatInput>
+                          </CustomInput>
+                        </ul>
+                      </li>
+                    </ul>
+                    <div className="bottom_panel">
+                      <div className="d-flex justify-content-between align-items-baseline">
+                        <a
+                          onClick={() => props.setState({ profileComponent: true })}
+                          className="Back_arrow"
+                        >
+                          {" "}
+                          <img src={BackArrow} alt="" />
+                          Back
+                        </a>
+                        <button
+                          htmlType="submit"
+                          className="btn btn-primary CR-primary-btn"
+                          style={{ width: "100px", margin: "0 !important" }}
+                        >
+                          Save
+                        </button>
+                      </div>
+                    </div>
+                  </Spinner>
+                </div>
+              </div>
+            </Form>
+          </div>
+        </div>
+      ) : (
+        <VerifyOtp
+          setLoader={setLoader}
+          editProfile={editProfile}
+          state={state}
+          useFor="edit_profile"
+          // setState={props.setState}
+          setEditPage={setEditPage}
+        />
+      )}
+    </>
+  );
+};
+
+export default EditProfileDetails;
+
+        if (data.isMigretedCustomer == "Y" || data.isMigretedCustomer == "V") {
+
