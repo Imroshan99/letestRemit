@@ -1,0 +1,598 @@
+import { Button, DatePicker, Form, Modal, notification, Select } from "antd";
+import moment from "moment";
+import { useEffect, useReducer, useState } from "react";
+import { useSelector } from "react-redux";
+import { GuestAPI } from "../../../apis/GuestAPI";
+import { ProfileAPI } from "../../../apis/ProfileAPI";
+import useHttp from "../../../hooks/useHttp";
+import CustomInput from "../../../reusable/CustomInput";
+import FloatInput from "../../../reusable/FloatInput";
+import Spinner from "../../../reusable/Spinner";
+import { validateEmailId } from "../../../services/validations/email";
+import { inputValidations } from "../../../services/validations/validations";
+const { Option } = Select;
+
+export default function MigratedData(props) {
+  const [form] = Form.useForm();
+  const AuthReducer = useSelector((state) => state.user);
+
+  const [isModalVisible, setIsModalVisible] = useState(false);
+  const [state, setState] = useReducer((state, newState) => ({ ...state, ...newState }), {
+    phoneCodes: [],
+    sendCountryList: [],
+    cityLists: [],
+    stateLists: [],
+    sendCountry: "",
+    dob: "",
+    mobilePhoneCode: "",
+    isMigratedData: {},
+    pickerField: false,
+  });
+  const [loader, setLoader] = useState(0);
+
+  const hookGetCountryStates = useHttp(GuestAPI.countryStates);
+  const hookGetStateCities = useHttp(GuestAPI.stateCities);
+  const hookEditProfileContact = useHttp(ProfileAPI.editProfileContact);
+  const hookGetCountryPhoneCodes = useHttp(GuestAPI.getCountryPhoneCodes);
+  const hookEditProfileChangeCountry = useHttp(ProfileAPI.editProfileChangeCountry);
+
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: "smooth" });
+    getStateLists();
+    getCoutryCodes();
+  }, []);
+  useEffect(() => {
+    if (
+      props?.state?.migratedProfileData?.isMigretedCustomer == "Y" ||
+      props?.state?.migratedProfileData?.isMigretedCustomer == "V"
+    ) {
+      if (
+        props.state.migratedProfileData.address1 == "" ||
+        props.state.migratedProfileData.address2 == "" ||
+        props.state.migratedProfileData.dob == "" ||
+        props.state.migratedProfileData.mobileNo == "" ||
+        props.state.migratedProfileData.mobilePhoneCode == "" ||
+        props.state.migratedProfileData.zip == "" ||
+        props.state.migratedProfileData.emailId == "" ||
+        props.state.migratedProfileData.state == "" ||
+        props.state.migratedProfileData.city == ""
+      ) {
+        setIsModalVisible(true);
+      }
+      if (props.state.migratedProfileData.dob) {
+        setState({ pickerField: true });
+      }
+
+      form.setFieldsValue({
+        email: props.state.migratedProfileData.emailId,
+        dob: props.state.migratedProfileData.dob,
+        mobileCountryCode: props.state.migratedProfileData.mobilePhoneCode,
+        mobileNo: props.state.migratedProfileData.mobileNo,
+        address1: props.state.migratedProfileData.address1,
+        city: props.state.migratedProfileData.city,
+        state: props.state.migratedProfileData.state,
+        zipcode: props.state.migratedProfileData.zip,
+        address2: props.state.migratedProfileData.address2,
+      });
+      // let MigratedDataVar = {};
+      // if (props.state.migratedProfileData.address1 == "") {
+      //   MigratedDataVar.address1 = true;
+      //   // setState({
+      //   //   isMigratedData: { ...state.isMigratedData, address1: true },
+      //   // });
+      //   setIsModalVisible(true);
+      // }
+      // if (props.state.migratedProfileData.address2 == "") {
+      //   MigratedDataVar.address2 = true;
+
+      //   // setState({
+      //   //   isMigratedData: { ...state.isMigratedData, address2: true },
+      //   // });
+      //   setIsModalVisible(true);
+      // }
+      // if (props.state.migratedProfileData.city == "") {
+      //   MigratedDataVar.city = true;
+
+      //   // setState({
+      //   //   isMigratedData: { ...state.isMigratedData, city: true },
+      //   // });
+      //   setIsModalVisible(true);
+      // }
+      // if (props.state.migratedProfileData.state == "") {
+      //   MigratedDataVar.state = true;
+
+      //   // setState({
+      //   //   isMigratedData: { ...state.isMigratedData, state: true },
+      //   // });
+      //   setIsModalVisible(true);
+      // }
+      // if (props.state.migratedProfileData.emailId == "") {
+      //   MigratedDataVar.emailId = true;
+
+      //   // setState({
+      //   //   isMigratedData: { ...state.isMigratedData, emailId: true },
+      //   // });
+      //   setIsModalVisible(true);
+      // }
+      // if (props.state.migratedProfileData.zip == "") {
+      //   MigratedDataVar.zip = true;
+
+      //   // setState({
+      //   //   isMigratedData: { ...state.isMigratedData, zip: true },
+      //   // });
+      //   setIsModalVisible(true);
+      // }
+      // if (props.state.migratedProfileData.mobilePhoneCode == "") {
+      //   MigratedDataVar.mobilePhoneCode = true;
+
+      //   // setState({
+      //   //   isMigratedData: { ...state.isMigratedData, mobilePhoneCode: true },
+      //   // });
+      //   setIsModalVisible(true);
+      // }
+      // if (props.state.migratedProfileData.mobileNo == "") {
+      //   MigratedDataVar.mobileNo = true;
+
+      //   // setState({
+      //   //   isMigratedData: { ...state.isMigratedData, mobileNo: true },
+      //   // });
+      //   setIsModalVisible(true);
+      // }
+      // if (props.state.migratedProfileData.dob == "") {
+      //   MigratedDataVar.dob = true;
+
+      //   // setState({
+      //   //   isMigratedData: { ...state.isMigratedData, dob: true },
+      //   // });
+      //   setIsModalVisible(true);
+      // }
+      // setState({ isMigratedData: MigratedDataVar });
+    }
+  }, []);
+  const getCoutryCodes = async () => {
+    const payload = {
+      requestType: "COUNTRYPHONECODE",
+    };
+    setLoader((prevState) => prevState + 1);
+    hookGetCountryPhoneCodes.sendRequest(payload, function (data) {
+      setLoader((prevState) => prevState - 1);
+      if (data.status == "S") {
+        let phoneCode = data.responseData.filter((i) => {
+          return i.countryCode == AuthReducer.sendCountryCode;
+        });
+        // setState({
+        //   phoneCodes: [{ countryPhoneCode: 1, countryName: "United States" }],
+        // });
+        setState({
+          phoneCodes: phoneCode,
+        });
+      }
+    });
+  };
+  const getStateLists = () => {
+    let payload = {
+      requestType: "STATELIST",
+      countryCode: AuthReducer.sendCountryCode,
+      keyword: "",
+    };
+    setLoader((prevState) => prevState + 1);
+    hookGetCountryStates.sendRequest(payload, function (data) {
+      setLoader((prevState) => prevState - 1);
+      if (data.status === "S") {
+        let activeState = data.responseData.filter((state) => {
+          return state.isActive == "Y";
+        });
+        setState({ stateLists: activeState });
+      } else {
+        notification.error({
+          message: data.errorMessage ? data.errorMessage : "Get country state failed.",
+        });
+      }
+    });
+  };
+  const onSelectStateHandler = async (stateCode) => {
+    form.setFieldsValue({ city: "" });
+    const cityPayload = {
+      requestType: "CITILIST",
+      countryCode: AuthReducer.sendCountryCode,
+      stateCode: stateCode,
+    };
+    setLoader((prevState) => prevState + 1);
+    hookGetStateCities.sendRequest(cityPayload, function (data) {
+      setLoader((prevState) => prevState - 1);
+      if (data.status === "S") {
+        setState({
+          cityLists: data.responseData,
+        });
+      } else {
+        notification.error({
+          message: data.errorMessage ? data.errorMessage : "Get state cities failed.",
+        });
+        setState({
+          cityLists: [],
+        });
+      }
+    });
+  };
+  const editProfileContact = (values) => {
+    let editProfileMainPayload = {
+      occupation: "",
+      homePhoneNo: "",
+      companyName: "",
+      emailId: values.email ? values.email : props?.state?.migratedProfileData?.emailId,
+      pageName: "EDITPROFILE",
+      ssn: "",
+      passportExpiryDt:
+        props?.state?.migratedProfileData.passportExpiryDt == "1900-01-01"
+          ? ""
+          : props?.state?.migratedProfileData.passportExpiryDt,
+      address5: props?.state?.migratedProfileData?.address5,
+      pep: "",
+      passportIssueDate: "",
+      address4: "",
+      profession: "0",
+      isSameCommAddressFlag: "",
+      motherMaidenName: "",
+      marketingCommunication: "",
+      // tnc: "Y",
+      primaryBusinessFunction: "",
+      firstName: props?.state?.migratedProfileData?.firstName,
+      // nationality: "US",
+      flatNo: "",
+      dob: state?.dob ? state.dob : props.state.migratedProfileData.dob,
+      SIN: "",
+      salutation: "",
+      periodicUpdate: "",
+      passportIssuePlace: "",
+      income: "0",
+      lastName: props?.state?.migratedProfileData?.lastName,
+      gender: props?.state?.migratedProfileData?.gender
+        ? props?.state?.migratedProfileData?.gender
+        : "O",
+
+      // data for viamerica
+      employer: "",
+      employerPhoneCode: "",
+      employerPhoneNo: "",
+
+      // address
+      address1: window.btoa(
+        values.address1 ? values.address1 : props?.state?.migratedProfileData?.address1,
+      ),
+      address2: window.btoa(
+        values.address2 ? values.address2 : props?.state?.migratedProfileData?.address2,
+      ),
+      address3: "",
+      state: window.btoa(values.state ? values.state : props?.state?.migratedProfileData?.state),
+      city: window.btoa(values.city ? values.city : props?.state?.migratedProfileData?.city),
+      zipCode: values.zipcode ? values.zipcode : props?.state?.migratedProfileData?.zip,
+      sendCountry: AuthReducer.sendCountryCode,
+      //comm
+      commAddress1: window.btoa(
+        values.address1 ? values.address1 : props?.state?.migratedProfileData?.address1,
+      ),
+      commAddress2: window.btoa(
+        values.address2 ? values.address2 : props?.state?.migratedProfileData?.address2,
+      ),
+      commStateProvince: values.state ? values.state : props?.state?.migratedProfileData?.state,
+      commCity: values.city ? values.city : props?.state?.migratedProfileData?.city,
+      commPostalCode: values.zipcode ? values.zipcode : props?.state?.migratedProfileData?.zip,
+
+      documentType: "",
+
+      industry: "",
+      title: "",
+      // isEmailVerified: "Y",
+      sourceOfFund: "",
+      drivingLicenseNo: "",
+      mobilePhoneCode: state.mobilePhoneCode
+        ? state.mobilePhoneCode
+        : props?.state?.migratedProfileData?.mobilePhoneCode,
+      clientId: "VIAMERICAS",
+      requestType: "EDITPROFILE",
+      extraInfoRequire: "", //Y
+      citizenship: "US", //US
+      mobileNo: values.mobileNo ? values.mobileNo : props?.state?.migratedProfileData?.mobileNo,
+      userId: AuthReducer.userID,
+      commCountry: AuthReducer.sendCountryCode,
+      // isMobileVerified: "Y",
+
+      middleName: props?.state?.migratedProfileData?.middleName,
+      uniqueIdentifierType: "",
+      uniqueIdentifierValue: "",
+    };
+    setLoader((prevState) => prevState + 1);
+    hookEditProfileChangeCountry.sendRequest(editProfileMainPayload, function (dataEPC) {
+      setLoader((prevState) => prevState - 1);
+      if (dataEPC.status == "S") {
+        notification.success({ message: dataEPC.message });
+        setIsModalVisible(false);
+      } else {
+        notification.error({
+          message: dataEPC.errorMessage
+            ? dataEPC.errorMessage
+            : "Edit Profile change country failed.",
+        });
+      }
+    });
+  };
+  return (
+    <>
+      <Modal
+        title="Migrated Details"
+        open={isModalVisible}
+        onOk={() => setIsModalVisible(false)}
+        // onCancel={() => setIsModalVisible(false)}
+        footer={false}
+        closable={false}
+        maskClosable={false}
+      >
+        <Spinner spinning={loader === 0 ? false : true}>
+          <Form form={form} onFinish={editProfileContact}>
+            <ul class="row">
+              <li class="col-md-12 col-sm-12 col-lg-12">
+                <CustomInput
+                  showLabel={false}
+                  name="email"
+                  validationRules={[
+                    ({ getFieldValue }) => ({
+                      validator(rule, value) {
+                        let message = "";
+                        let obj = validateEmailId(value ? value : "");
+                        message = obj.message;
+                        if (obj.status === "S") {
+                          return Promise.resolve();
+                        }
+                        return Promise.reject(message);
+                      },
+                    }),
+                  ]}
+                  label="Email address"
+                >
+                  <FloatInput
+                    type="text"
+                    placeholder="Email address"
+                    //  disabled={true}
+                  />
+                </CustomInput>
+              </li>
+              <li class="col-md-12 col-sm-12 col-lg-12">
+                {/* <CustomInput
+                  className="form-item"
+                  name="dob"
+                  label="Date of Birth"
+                  showLabel={false}
+                  required
+                >
+                  <FloatInput
+                    type="datepicker"
+                    placeholder="Date of Birth"
+                    className="w-100"
+                    defaultPickerValue={moment().subtract(18, "years")}
+                    disabledDate={(d) =>
+                      !d ||
+                      d.isAfter(moment().subtract(18, "years")) ||
+                      d.isSameOrBefore("1900-01-01")
+                    }
+                    onChange={(value, dateString) => {
+                      value !== null ? setState({ dob: dateString }) : setState({ dob: "" });
+                    }}
+                  />
+                </CustomInput> */}
+                <CustomInput showLabel={false} label="Date of Birth" name="dob" required>
+                  {!state.pickerField ? (
+                    <FloatInput
+                      type="datepicker"
+                      placeholder="Date of Birth"
+                      className="w-100"
+                      defaultPickerValue={moment().subtract(18, "years")}
+                      disabledDate={(d) =>
+                        !d ||
+                        d.isAfter(moment().subtract(18, "years")) ||
+                        d.isSameOrBefore("1900-01-01")
+                      }
+                      onChange={(value, dateString) => {
+                        value !== null ? setState({ dob: dateString }) : setState({ dob: "" });
+                      }}
+                    />
+                  ) : (
+                    <FloatInput
+                      type="text"
+                      onChange={() => {
+                        setState({ pickerField: false });
+                      }}
+                      placeholder="Enter Dob"
+                    />
+                  )}
+                </CustomInput>
+              </li>
+              <li class="col-md-12 col-sm-12 col-lg-12">
+                <div className="row">
+                  <div className="col-12 col-md-5">
+                    <CustomInput
+                      showLabel={false}
+                      name="mobileCountryCode"
+                      label="Select Phone Code"
+                      required
+                    >
+                      <FloatInput
+                        type="select"
+                        placeholder="Select Phone Code"
+                        label="Phone Code"
+                        name="mobileCountryCode"
+                        // disabled={state.mobileNoInp}
+                        required
+                        //  size="small"
+                        showSearch
+                        // value={selectValue}
+                        onChange={(e) => {
+                          setState({ mobilePhoneCode: e });
+                        }}
+                      >
+                        {state.phoneCodes.map((phoneCode, i) => {
+                          return (
+                            <Option
+                              key={i}
+                              value={phoneCode.countryPhoneCode}
+                            >{`(${phoneCode.countryPhoneCode}) ${phoneCode.countryName}`}</Option>
+                          );
+                        })}
+                      </FloatInput>
+                    </CustomInput>
+                  </div>
+                  <div className="col-12 col-md-7">
+                    {/* <div class="form-floating">
+                        <select class="form-select input-flags">
+                          <option>None</option>
+                          <option value="1">One</option>
+                          <option value="2">Two</option>
+                          <option value="3">Three</option>
+                        </select>
+                        <label for="floatingInput">Date of birth</label>
+                      </div> */}
+                    <CustomInput
+                      showLabel={false}
+                      name="mobileNo"
+                      label="Mobile Number"
+                      validationRules={[
+                        {
+                          pattern: /^[1-9]\d*$/,
+                          message: "Mobile number should not start with 0",
+                        },
+                        ...inputValidations.mobileNumber(),
+                      ]}
+                      required
+                    >
+                      <FloatInput
+                        onChange={(e) => {
+                          setState({ mobileNo: e.target.value });
+                        }}
+                        // disabled={state.mobileNoInp}
+                        type="text"
+                        placeholder="Mobile Number"
+                      />
+                    </CustomInput>
+                  </div>
+                </div>
+              </li>
+              <li class="col-md-12 col-sm-12 col-lg-12">
+                <CustomInput
+                  showLabel={false}
+                  name="address1"
+                  label="Address Line 1"
+                  validationRules={[
+                    ({ getFieldValue }) => ({
+                      validator(rule, value) {
+                        let message = "";
+                        let obj = inputValidations.validateAddress(value ? value : "");
+                        message = obj.message;
+                        if (obj.status === "S") {
+                          return Promise.resolve();
+                        }
+                        return Promise.reject(message);
+                      },
+                    }),
+                  ]}
+                >
+                  <FloatInput placeholder="Address Line 1" />
+                </CustomInput>
+              </li>
+              <li class="col-md-12 col-sm-12 col-lg-12">
+                <CustomInput
+                  showLabel={false}
+                  name="address2"
+                  label="Address Line 2"
+                  validationRules={[
+                    ({ getFieldValue }) => ({
+                      validator(rule, value) {
+                        let message = "";
+                        let obj = inputValidations.validateAddress(value ? value : "");
+                        message = obj.message;
+                        if (obj.status === "S") {
+                          return Promise.resolve();
+                        }
+                        return Promise.reject(message);
+                      },
+                    }),
+                  ]}
+                >
+                  <FloatInput type="text" placeholder="Address Line 2" />
+                </CustomInput>
+              </li>
+              <li class="col-md-12 col-sm-12 col-lg-12">
+                <CustomInput
+                  showLabel={false}
+                  name="zipcode"
+                  label="Zip Code"
+                  validationRules={[
+                    ...inputValidations.zipCode(AuthReducer.sendCountryCode),
+                    ({ getFieldValue }) => ({
+                      validator(rule, value) {
+                        // validate space before and after string
+                        let startSpace = /^\s/;
+                        let endSpace = / $/;
+                        if (startSpace.test(value) || endSpace.test(value)) {
+                          return Promise.reject("Space not allowed before and after the Zipcode.");
+                        }
+
+                        return Promise.resolve();
+                      },
+                    }),
+                  ]}
+                  // min={5}
+                  // max={5}
+                  required
+                >
+                  <FloatInput type="text" placeholder="Zip Code" />
+                </CustomInput>
+              </li>
+              <>
+                <li class="col-md-12 col-sm-12 col-lg-12">
+                  <CustomInput name="state" label="State" showLabel={false} required>
+                    <FloatInput
+                      type="select"
+                      autoComplete="none"
+                      placeholder="State"
+                      label="State"
+                      className="w-100"
+                      onSelect={onSelectStateHandler}
+                      filterOption={(inputValue, option) =>
+                        option.value.toUpperCase().indexOf(inputValue.toUpperCase()) !== -1
+                      }
+                    >
+                      {state.stateLists.map((st, i) => {
+                        return <Option key={i} value={st.state}>{`${st.state}`}</Option>;
+                      })}
+                    </FloatInput>
+                  </CustomInput>
+                </li>
+
+                <li class="col-md-12 col-sm-12 col-lg-12">
+                  <CustomInput name="city" label="City" showLabel={false} required>
+                    <FloatInput
+                      type="select"
+                      placeholder="City"
+                      label="City"
+                      className="w-100"
+                      autoComplete="none"
+                      filterOption={(inputValue, option) =>
+                        option.value.toUpperCase().indexOf(inputValue.toUpperCase()) !== -1
+                      }
+                    >
+                      {state.cityLists.map((st, i) => {
+                        return <Option key={i} value={st.city}>{`${st.city}`}</Option>;
+                      })}
+                    </FloatInput>
+                  </CustomInput>
+                </li>
+              </>
+              <div className="w-100 d-flex justify-content-end">
+                <Button htmlType="submit">Submit</Button>
+              </div>
+            </ul>
+          </Form>
+        </Spinner>
+      </Modal>
+    </>
+  );
+}
