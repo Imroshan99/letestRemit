@@ -1,0 +1,232 @@
+import c2r_logo from "../../../assets/images/click2remit/C2R_logo_pre1.png";
+
+import linkedin from "../../../assets/images/click2remit/linkedin-png.png";
+import facebook from "../../../assets/images/click2remit/facebook-png.png";
+import twitter from "../../../assets/images/click2remit/twitter-png.png";
+import youtube from "../../../assets/images/click2remit/youtube-png.png";
+import footervilogo from "../../../assets/images/click2remit/footervialogo.png";
+import { useNavigate } from "react-router";
+import { Link } from "react-router-dom";
+import Licence from "./../Pages/Licence";
+import { useSelector } from "react-redux";
+
+export default function ViaFooter() {
+  const navigate = useNavigate();
+  const AuthReducer = useSelector((state) => state.user);
+  const contactUsHandler = () => {
+    if (!AuthReducer.isLoggedInDone) {
+      AuthReducer.isLoggedIn
+        ? navigate("/help-support")
+        : navigate("/help-support", { state: { sidebar: false } });
+    } else {
+      // navigate("/help-support", { state: { sidebar: false } });
+    }
+  };
+  return (
+    <div className="">
+      <div className="row mb-3">
+        <div className="col-12 col-md-3">
+          <Link to="/" className="navbar-brand">
+            <img
+              className="w-100"
+              src={c2r_logo}
+              alt="Click 2 Remit"
+              // style={{ border: "1px solid #aec2e5", padding: "3px" }}
+            />
+          </Link>
+          <div
+          // style={{
+          //   padding: "2px",
+          //   border: " 1px solid #aec2e5",
+          //   marginTop: "9px",
+          //   width: "313px",
+          // }}
+          >
+            <div className="mt-2 mb-3" style={{ height: "20px" }}>
+              <a
+                target="_blank"
+                className="me-3 h-100"
+                href="https://www.linkedin.com/company/kotak-mahindra-bank"
+              >
+                <img src={linkedin} height="100%" style={{ borderRadius: "7px" }} />
+              </a>
+              <a target="_blank" className="me-3 h-100" href="https://www.facebook.com/KotakBank/">
+                <img src={facebook} height="100%" style={{ borderRadius: "7px" }} />
+              </a>
+              <a
+                target="_blank"
+                className="me-3 h-100"
+                href="https://twitter.com/kotakbankltd?lang=en"
+              >
+                <img src={twitter} height="100%" style={{ borderRadius: "7px" }} />
+              </a>
+              <a
+                target="_blank"
+                className="h-100"
+                href=" https://www.youtube.com/user/KotakBankIndia"
+              >
+                <img src={youtube} height="100%" style={{ borderRadius: "7px" }} />
+              </a>
+            </div>
+            {/* <a href="https://www.facebook.com/KotakBank/">
+          <img
+            src={instagram}
+            width="30px"
+            height="100%"
+            
+          />
+        </a> */}
+          </div>
+        </div>
+
+        <div
+          className="col-12 col-md-3"
+          // style={{
+          //   border: "1px solid #aec2e5",
+          //   width: "250px",
+          //   marginLeft: " 21px",
+          //   height: "121px",
+          //   padding: "16px",
+          // }}
+        >
+          <h2>Quick Links</h2>
+          <ul class="list-footer-verticle mb-0">
+            <li class="mb-2">
+              <a target="_blank" href="/" class="">
+                Click2Remit USA
+              </a>
+            </li>
+            {/* <li class="mb-2">
+              <a target="_blank" href="/" class="">
+                Click2Remit UK
+              </a>
+            </li> */}
+          </ul>
+        </div>
+        <div className="col-12 col-md-3">
+          <h2>Help &amp; Support</h2>
+          <ul class="list-footer-verticle mb-0">
+            <li class="mb-2">
+              <a onClick={contactUsHandler} class="">
+                Contact Us
+              </a>
+            </li>
+            <li class="mb-2">
+              <a target="_blank" href="/" class="">
+                Feedback
+              </a>
+            </li>
+          </ul>
+        </div>
+        <div
+          className="col-12 col-md-3 text-center"
+          // style={{
+          //   border: "1px solid #aec2e5",
+          //   width: "407px",
+          //   marginLeft: " 21px",
+          //   height: "121px",
+          // }}
+        >
+          <span style={{ fontSize: "12px", color: "#022173" }}>Powered by</span> <br />
+          <img
+            onClick={() => {
+              AuthReducer.isLoggedIn && window.open("https://corporate.viamericas.com/", "_blank");
+            }}
+            src={footervilogo}
+            alt="viamerica"
+            style={{
+              width: "120px",
+              cursor: "pointer",
+            }}
+          />
+        </div>
+      </div>
+      <section class="">
+        <div class="row">
+          <div className="col-12 col-md-12 ">
+            <p className="text-justify fs-14" style={{ textAlign: "justify", font: "#828282" }}>
+              Disclaimer * Money transfer service from the USA to India is the provided exclusively
+              by Viamericas. Kotak Bank | Click2Remit is not the provider of any of the Money
+              transfer services described on the website Viamericas is a tradename of Viamericas
+              Corporation, Viamericas Finacial services Corporation Viamericas Money Services
+              Corporation and Viaamericas New York Corporation. Licenced by the Georgia Department
+              of Banking and Finance under Licence #19160 and by the Commonwealth of Massachusets
+              Division of Banks under Licence # FT12103. For information about other state licenses
+              and state Regulations performing oversight over Viamericas. Please visit to file a
+              complaint and compliance section Viamericas logos are trademarks of Viamericas
+              Corporation. Kotak Bank |Click2Remit logo are trademarks of Kotak Bank. All logos,
+              trademarks, service marks and registered marks belong by their respective owners.
+            </p>
+          </div>
+        </div>
+      </section>
+      <div className="mt-2">
+        <nav
+          class="navbar navbar-expand-lg navbar-light "
+          style={{ backgroundColor: "#E0E0E0", paddingLeft: "1rem" }}
+        >
+          <span class="navbar-brand">VIAMERICAS</span>
+
+          <div class="" id="navbarNav">
+            <ul class="list-footer-verticle navbar-nav">
+              <li class="nav-item active">
+                <a
+                  target="_blank"
+                  className="nav-link"
+                  href="https://corporate.viamericas.com/about/ "
+                >
+                  About us
+                </a>
+              </li>
+              <li class="nav-item">
+                <a
+                  target="_blank"
+                  className="nav-link"
+                  href="https://corporate.viamericas.com/contact/ "
+                >
+                  Contact us
+                </a>
+              </li>
+              <li class="nav-item">
+                <a
+                  target="_blank"
+                  className="nav-link"
+                  href="https://corporate.viamericas.com/state-licensing-information/"
+                >
+                  State Licensing
+                </a>
+              </li>
+              <li class="nav-item">
+                <a
+                  target="_blank"
+                  className="nav-link"
+                  href="https://s3.amazonaws.com/cdn.govianex.com/privacy-policy/www/viamericas_privacy-policy.pdf "
+                >
+                  Privacy Policy
+                </a>
+              </li>
+              <li class="nav-item">
+                <a
+                  target="_blank"
+                  className="nav-link"
+                  href="https://corporate.viamericas.com/file-a-complaint/"
+                >
+                  File a Complaint
+                </a>
+              </li>
+              <li class="nav-item">
+                <a
+                  target="_blank"
+                  className="nav-link"
+                  href="https://s3.amazonaws.com/cdn.govianex.com/terms-and-conditions/www/viamericas_terms-and-conditions.pdf "
+                >
+                  Terms and Conditions
+                </a>
+              </li>
+            </ul>
+          </div>
+        </nav>
+      </div>
+    </div>
+  );
+}
