@@ -1,0 +1,199 @@
+import {
+  AppstoreOutlined,
+  CalendarOutlined,
+  LinkOutlined,
+  TransactionOutlined,
+  HomeFilled,
+  UserOutlined,
+  LogoutOutlined,
+} from "@ant-design/icons";
+import { Menu, notification } from "antd";
+import { useContext, useState } from "react";
+import { Link, NavLink, useLocation, useNavigate } from "react-router-dom";
+import { MenuContext } from "../Context/MenuContext";
+import { AuthAPI } from "../../../apis/AuthAPI";
+import useHttp from "../../../hooks/useHttp";
+import { useDispatch, useSelector } from "react-redux";
+import Spinner from "../../../reusable/Spinner";
+import {
+  login,
+  setIsLoginDone,
+  setRecvCountryCode,
+  setRecvCurrencyCode,
+  setSendCountryCode,
+  setSendCurrencyCode,
+} from "../../../reducers/userReducer";
+function getItem(label, key, icon, children) {
+  return {
+    key,
+    icon,
+    children,
+    label,
+  };
+}
+
+const MenuPathNames = {
+  NEW_TRANSACTION: "/new-transaction",
+  TRANSACTIONS: "/transactions",
+  MY_BENEFICIARY: "/my-beneficiary",
+  PROFILE: "/profile",
+  RESET_PASSWORD: "/reset-password",
+  REMITTER_ACCOUNTS: "/manage-remitter-accounts",
+  HELP_SUPPORT: "/help-support",
+  KYC: "/kyc",
+  DOC_UPLOAD: "/user-doc-upload",
+};
+
+const items = [
+  getItem(
+    <Menu.Item key={MenuPathNames.NEW_TRANSACTION}>
+      <Link to={MenuPathNames.NEW_TRANSACTION}>Home</Link>
+    </Menu.Item>,
+    MenuPathNames.NEW_TRANSACTION,
+    <HomeFilled />,
+  ),
+  getItem(
+    <Link to={MenuPathNames.TRANSACTIONS}>Transactions</Link>,
+    MenuPathNames.TRANSACTIONS,
+    <TransactionOutlined />,
+  ),
+
+  getItem(
+    <Menu.Item key={MenuPathNames.MY_BENEFICIARY}>
+      <Link to={MenuPathNames.MY_BENEFICIARY}>Manage Beneficiary</Link>
+    </Menu.Item>,
+    MenuPathNames.MY_BENEFICIARY,
+    <AppstoreOutlined />,
+  ),
+  getItem("Profile", "sub1", <UserOutlined />, [
+    getItem(
+      <Menu.Item key={MenuPathNames.PROFILE}>
+        <Link to={MenuPathNames.PROFILE}>Profile Details</Link>
+      </Menu.Item>,
+      MenuPathNames.PROFILE,
+    ),
+
+    getItem(
+      <Menu.Item key={MenuPathNames.REMITTER_ACCOUNTS}>
+        <Link to={MenuPathNames.REMITTER_ACCOUNTS}>Manage Remitter Accounts</Link>
+      </Menu.Item>,
+      MenuPathNames.REMITTER_ACCOUNTS,
+    ),
+    getItem(
+      <Menu.Item key={MenuPathNames.RESET_PASSWORD}>
+        <Link to={MenuPathNames.RESET_PASSWORD}>Reset Password</Link>
+      </Menu.Item>,
+      MenuPathNames.RESET_PASSWORD,
+    ),
+    getItem(
+      <Menu.Item key={MenuPathNames.HELP_SUPPORT}>
+        <Link to={MenuPathNames.HELP_SUPPORT}>Help and Support</Link>
+      </Menu.Item>,
+      MenuPathNames.HELP_SUPPORT,
+    ),
+    getItem(
+      <Menu.Item key={MenuPathNames.KYC}>
+        <Link to={MenuPathNames.KYC}>KYC</Link>
+      </Menu.Item>,
+      MenuPathNames.KYC,
+    ),
+    getItem(
+      <Menu.Item key={MenuPathNames.DOC_UPLOAD}>
+        <Link to={MenuPathNames.DOC_UPLOAD}>Doc Upload</Link>
+      </Menu.Item>,
+      MenuPathNames.DOC_UPLOAD,
+    ),
+  ]),
+  // getItem('Navigation Three', 'sub4', '55', [
+  //   getItem('Option 9', '9'),
+  //   getItem('Option 10', '10'),
+  //   getItem('Option 11', '11'),
+  //   getItem('Option 12', '12'),
+  // ]),
+  getItem(
+    <span rel="noopener noreferrer" style={{ color: "#ED535B" }}>
+      Logout
+    </span>,
+    "logout",
+    <LogoutOutlined style={{ color: "#ED535B" }} />,
+  ),
+];
+
+export default function SidebarMenu() {
+  const location = useLocation();
+  const _menuContext = useContext(MenuContext);
+  const AuthReducer = useSelector((state) => state.user);
+  const hookLogout = useHttp(AuthAPI.logout);
+  const navigate = useNavigate();
+  const dispatch = useDispatch();
+  
+  const [loader, setLoader] = useState(false);
+
+  const getLogout = () => {
+    const payload = {
+      requestType: "LOGOUT",
+      clientId: "VIAMERICAS",
+      userId: AuthReducer.userID,
+      ulId: "",
+    };
+    setLoader(true);
+    hookLogout.sendRequest(payload, function (data) {
+      setLoader(false);
+      if (data.status == "S") {
+        // notification.success({ message: data.message });
+        // window.location.href = "/";
+        // dispatch(setIsLoginDone(true));
+        dispatch(setSendCountryCode(""));
+        dispatch(setSendCurrencyCode(""));
+        dispatch(setRecvCountryCode(""));
+        dispatch(setRecvCurrencyCode(""));
+        dispatch(
+          login({
+            lastLogin: "",
+            userID: "",
+            userFullName: "",
+            accessToken: "",
+            isLoggedIn: "",
+            regCountryCode: "",
+          }),
+        );
+        navigate("/signin");
+      } else {
+        notification.error({
+          message: data.errorMessage ? data.errorMessage : "Logout failed.",
+        });
+      }
+    });
+  };
+  return (
+    <>
+      <div className={`CR__sidebar_menu ${_menuContext.isVisible ? "visible" : ""}`}>
+        <Spinner spinning={loader}>
+          <Menu
+            style={{
+              width: 250,
+            }}
+            selectedKeys={[location.pathname]}
+            defaultSelectedKeys={["1"]}
+            defaultOpenKeys={["sub1"]}
+            mode={"inline"}
+            theme={"light"}
+            items={items}
+            onClick={(e) => {
+              _menuContext.toggleMenu(!_menuContext.isVisible);
+              {
+                e.key == "logout" && getLogout();
+              }
+            }}
+          />
+        </Spinner>
+      </div>
+      <div
+        class={`layout-overlay ${_menuContext.isVisible ? "visible" : ""}`}
+        onClick={() => {
+          _menuContext.toggleMenu(!_menuContext.isVisible);
+        }}
+      ></div>
+    </>
+  );
+}
