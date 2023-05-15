@@ -1,0 +1,432 @@
+import { Form, notification } from "antd";
+import { useReducer, useState } from "react";
+import { useLocation, useNavigate } from "react-router";
+import { AuthAPI } from "../../../apis/AuthAPI";
+import { GuestAPI } from "../../../apis/GuestAPI";
+import BackArrow from "../../../assets/images/click2remit/Back_arrow.svg";
+import useHttp from "../../../hooks/useHttp";
+import CustomInput from "../../../reusable/CustomInput";
+import FloatInput from "../../../reusable/FloatInput";
+import Spinner from "../../../reusable/Spinner";
+import { checkPassword } from "../../../services/validations/password";
+
+import VerifyOtp from "../containers/VerifyOtp";
+import Main from "../Layouts/Main";
+import { ProfileAPI } from "../../../apis/ProfileAPI";
+
+export default function MigratedCustomer(props) {
+  const [form] = Form.useForm();
+  const [form2] = Form.useForm();
+  const location = useLocation();
+  const navigate = useNavigate();
+  const [loader, setLoader] = useState(false);
+  const [password, setPassword] = useState("");
+  const [charNumberValid, setCharNumberValid] = useState(false);
+  const [specialCharValid, setSpecialCharValid] = useState(false);
+  const [uppercaseValid, setUppercaseValid] = useState(false);
+  const [lowercaseValid, setLowercaseValid] = useState(false);
+  const [numberValid, setNumberValid] = useState(false);
+  const [state, setState] = useReducer((state, newState) => ({ ...state, ...newState }), {
+    otpType: "LG",
+    isMigrated: false,
+    isActive: 3,
+    verifiedToken: "",
+    password: "",
+    verificationToken: "",
+    crnDetails: {},
+  });
+  const hookResetPassword = useHttp(AuthAPI.resetPassword);
+  const hookCrnDetails = useHttp(AuthAPI.crnDetails);
+  const hookCheckUpdateCRN = useHttp(AuthAPI.checkUpdateCRN);
+  const hookSendOTP = useHttp(ProfileAPI.sendOTP);
+
+  const checkPasswordLength = (password) => {
+    if (password.length >= 10) {
+      setCharNumberValid(true);
+    } else {
+      setCharNumberValid(false);
+    }
+  };
+
+  const checkSpecialCharacters = (password) => {
+    const pattern = /[ !@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/g;
+    if (pattern.test(password)) {
+      setSpecialCharValid(true);
+    } else {
+      setSpecialCharValid(false);
+    }
+  };
+
+  const checkUppercase = (password) => {
+    const pattern = /[A-Z]/;
+    if (pattern.test(password)) {
+      setUppercaseValid(true);
+    } else {
+      setUppercaseValid(false);
+    }
+  };
+  const checkLowercase = (password) => {
+    const pattern = /[a-z]/;
+    if (pattern.test(password)) {
+      setLowercaseValid(true);
+    } else {
+      setLowercaseValid(false);
+    }
+  };
+  const checkNumber = (password) => {
+    const pattern = /[0-9]/;
+    if (pattern.test(password)) {
+      setNumberValid(true);
+    } else {
+      setNumberValid(false);
+    }
+  };
+  const handlePasswordChange = (event) => {
+    setPassword(event.target.value);
+    checkPasswordLength(event.target.value);
+    checkSpecialCharacters(event.target.value);
+    checkUppercase(event.target.value);
+    checkLowercase(event.target.value);
+    checkNumber(event.target.value);
+  };
+
+  const resetPassword = (value) => {
+    // props.setState({ migratePassword: value.newPassword });
+    const resetPasswordPayload = {
+      requestType: "RESETPASSWORD",
+      password: value.newPassword,
+      verifyType: "O",
+      verifiedToken: state.verifiedToken,
+    };
+
+    setLoader(true);
+    hookResetPassword.sendRequest(resetPasswordPayload, function (data) {
+      setLoader(false);
+      // props.submitHandler();  //delete
+      // let demo = "";
+      // props.submitHandler(demo, { email: props.state.emailId, password: state.password });
+
+      if (data.status == "S") {
+        notification.success({ message: data.message });
+        if (location.pathname == "/forgot-password") {
+          navigate("/signin", {
+            state: {
+              value: {
+                email: props.state.migratedUserDetails.loginId,
+                passwords: value.newPassword,
+              },
+              migratedUsr: { ...props.state.migratedUserDetails },
+            },
+          });
+        }
+        props.setState({ isMigrated: false });
+        let sample = "";
+        props.submitHandler(sample, value.newPassword);
+      } else {
+        notification.error({
+          message: data.errorMessage ? data.errorMessage : "Reset Password failed.",
+        });
+        let errors = [];
+        data.errorList.forEach((error, i) => {
+          if (error.field != "password") {
+            notification.error({ message: error.error });
+          }
+          let errorData = {
+            name: error.field,
+            errors: [error.error],
+          };
+          errors.push(errorData);
+        });
+
+        if (errors.length > 0) form.setFields(errors);
+      }
+    });
+  };
+  const getCRNDetails = (value) => {
+    if (value.crn.length >= 1) {
+      let payload = {
+        requestType: "CRNDETAILS",
+        crnNumber: props.state.migratedUserDetails.loginId, //"dummy crnNumber": "100881179",
+        bankAcctStatusCode: "Y",
+        apiType: "LOGIN",
+        userId: props.state.migratedUserDetails.userId,
+      };
+      setLoader(true);
+      hookCrnDetails.sendRequest(payload, function (data) {
+        // hookCrnDetails.sendRequest(payload, function (data1) {
+        //   let data = { ...data1, mobile_NO: "12346478489" };
+        // bypass for mobile number
+        setLoader(false);
+        if (data.status === "S") {
+          setState({ crnDetails: { ...data, crn_number: value.crn } });
+          //bypass
+          // checkUpdateCRN(data, value);
+          sendOTP(data, { isMigrated: true });
+        } else {
+          notification.error({
+            message: data.errorMessage
+              ? data.errorMessage
+              : "Access restricted. Please reach us at click2remit@kotak.com or 02266053825 for more information",
+          });
+          form.setFields([
+            {
+              name: "crn",
+              errors: [
+                data.errorMessage
+                  ? data.errorMessage
+                  : "Access restricted. Please reach us at click2remit@kotak.com or 02266053825 for more information",
+              ],
+            },
+          ]);
+        }
+      });
+    }
+  };
+
+  const checkUpdateCRN = (crnDetails, value) => {
+    let payload = {
+      requestType: "LOGIN",
+      userId: props.state.migratedUserDetails.userId,
+      firstName: crnDetails.first_name,
+      middleName: crnDetails.middle_name,
+      lastName: crnDetails.last_name,
+      crnNumber: crnDetails.crn_number,
+      applyNameMatch: "Y", //to apply name matching
+    };
+    setLoader(true);
+    hookCheckUpdateCRN.sendRequest(payload, function (data) {
+      // hookCrnDetails.sendRequest(payload, function (data1) {
+      //   let data = { ...data1, mobile_NO: "12346478489" };
+      // bypass for mobile number
+      setLoader(false);
+      if (data.status === "S") {
+        //bypass
+        // sendOTP(data, { isMigrated: true });
+        setState({ isActive: 2 });
+      } else {
+        notification.error({
+          message: data.errorMessage ? data.errorMessage : "Check update CRN failed.",
+        });
+      }
+    });
+  };
+
+  const sendOTP = (dataV, check) => {
+    const OTPData = {
+      requestType: "SENDOTP",
+      otpType: "LG",
+      userId: props.state.migratedUserDetails.userId,
+      otpOption: "SM",
+      otpService: "EMAIL",
+    };
+    setLoader(true);
+    hookSendOTP.sendRequest(OTPData, function (data) {
+      setLoader(false);
+      if (data.status == "S") {
+        notification.success({
+          message:
+            "OTP has been sent to your registered email address. Please check and enter correct OTP to proceed.",
+        });
+        // if (check?.isMigrated) {
+        setState({ isActive: 1, verificationToken: data.verificationToken });
+        // } else {
+        //   setState({
+        //     verificationToken: data.verificationToken,
+        //     _showSignInForm: false,
+        //     verifyViaOTP: true,
+        //     // _isShowOTPBOX: true,
+        //     // isModalVisible: true,
+        //   });
+        // }
+      } else {
+        notification.error({ message: data.errorMessage ? data.errorMessage : "Send OTP failed." });
+      }
+    });
+  };
+  return (
+    <>
+      {state.isActive == 1 && (
+        <VerifyOtp
+          state={state}
+          setState={setState}
+          gotoSignin={props.setState}
+          checkUpdateCRN={checkUpdateCRN}
+          // otpType={state.otpType}
+          useFor="migrated_customer"
+          appState={props.appState}
+        />
+      )}
+      <Spinner spinning={loader}>
+        {state.isActive == 2 && (
+          <Spinner spinning={loader}>
+            <div className="d-flex justify-content-center">
+              <div className="CR-default-box" style={{ maxWidth: "700px" }}>
+                <Form form={form} onFinish={resetPassword}>
+                  <div className="CR-side-space">
+                    <div
+                      className="d-flex justify-content-between flex-column"
+                      style={{ height: "604px", width: "620px" }}
+                    >
+                      <ul className="row CR-side-space">
+                        <li className="back-arrow-nav   d-xs-block d-done">
+                          <img src={BackArrow} alt="" />
+                        </li>
+
+                        <li className="col-md-12 col-sm-12 col-lg-12 ">
+                          <h4 className="text-black CR-font-28 mb-1">Set New Password</h4>
+                        </li>
+                        <li className="col-md-12 col-sm-12 col-lg-12 my-2 field-mobileResp">
+                          <ul className="row">
+                            <li className="col-md-12 col-sm-12 col-lg-12 mb-4">
+                              <ul className="password-match">
+                                <li className={charNumberValid ? "active" : "inactive"}>
+                                  At least 10 characters long
+                                </li>
+                                <li className={uppercaseValid ? "active" : "inactive"}>
+                                  At least 1 uppercase letter
+                                </li>
+                                <li className={lowercaseValid ? "active" : "inactive"}>
+                                  At least 1 lowercase letter
+                                </li>
+                                <li
+                                  className={
+                                    numberValid && specialCharValid ? "active" : "inactive"
+                                  }
+                                >
+                                  At least 1 number or special character
+                                </li>
+                              </ul>
+                            </li>
+                            <CustomInput
+                              showLabel={false}
+                              name="newPassword"
+                              label="Create new password"
+                              validationRules={[
+                                ({ getFieldValue }) => ({
+                                  validator(rule, value) {
+                                    let message = "";
+                                    let obj = checkPassword(value ? value : "");
+                                    message = obj.message;
+                                    if (obj.status === "S") {
+                                      return Promise.resolve();
+                                    }
+                                    return Promise.reject(message);
+                                  },
+                                }),
+                              ]}
+                            >
+                              <FloatInput
+                                type="password"
+                                onChange={handlePasswordChange}
+                                placeholder="Create new password"
+                              />
+                            </CustomInput>
+                          </ul>
+                          <ul className="row">
+                            <CustomInput
+                              showLabel={false}
+                              name="confirmPassword"
+                              label="Confirm new password"
+                              validationRules={[
+                                ({ getFieldValue }) => ({
+                                  validator(rule, value) {
+                                    if (!value || getFieldValue("newPassword") === value) {
+                                      return Promise.resolve();
+                                    }
+                                    return Promise.reject(
+                                      "The two password that you entered do not match!",
+                                    );
+                                  },
+                                }),
+                              ]}
+                              required
+                            >
+                              <FloatInput type="password" placeholder="Confirm new password" />
+                            </CustomInput>
+                          </ul>
+                        </li>
+                      </ul>
+                    </div>
+                  </div>
+                  <div className="bottom_panel">
+                    <div className="d-flex justify-content-between align-items-center gap-3 gap-md-5">
+                      <span onClick={() => setState({ isActive: 1 })} className="Back_arrow">
+                        <img src={BackArrow} alt="" />
+                        Back
+                      </span>
+                      <button
+                        type="submit"
+                        style={{ maxWidth: "17rem" }}
+                        //   onClick={() => setState({ profileComponent: false })}
+                        className="CR-primary-btn"
+                      >
+                        RESET PASSSWORD
+                      </button>
+                    </div>
+                  </div>
+                </Form>
+              </div>
+            </div>
+          </Spinner>
+        )}
+        {state.isActive == 3 && (
+          <>
+            <div className="container h-100 d-flex justify-content-center w-100">
+              {/* // <div className={`container h-100 w-100 ${AuthReducer.isLoggedIn?"":"d-flex justify-content-center"}`}> */}
+              {/* <div className="row h-100">
+          <div className="col-md-6 col-sm-12 col-lg-6 offset-md-3 align-self-center w-100">
+            <div className="CR-otp-form"> */}
+              <Form form={form2} onFinish={getCRNDetails}>
+                <div className="CR-otp-form-parent">
+                  <div className="CR-otp-form-child">
+                    <ul className="row d-flex flex-column align-items-center">
+                      <CustomInput
+                        showLabel={false}
+                        name="crn"
+                        label="CRN"
+                        validationRules={[
+                          // {
+                          //   min: 3,
+                          //   max: 10,
+                          //   message: "CRN Number should be min 3 and max 10 digits",
+                          // },
+                          {
+                            pattern: /^[0-9\b]+$/,
+                            message: "Only Numbers allowed",
+                          },
+                        ]}
+                        required
+                      >
+                        <FloatInput type="text" placeholder="CRN" />
+                      </CustomInput>
+                    </ul>
+                  </div>
+                  <div className="bottom_panel-otp-box p-0">
+                    <div className="d-flex justify-content-between align-items-center w-100">
+                      <div
+                        className="Back_arrow d-flex align-items-center"
+                        onClick={() => props.setState({ isMigrated: false })}
+                      >
+                        <img src={BackArrow} alt="backArrow" /> Back
+                      </div>
+                      <button
+                        htmlType="submit"
+                        className="btn btn-primary CR-primary-btn"
+                        style={{ width: "100px", margin: "0 !important" }}
+                      >
+                        Confirm
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </Form>
+              {/* </div>
+          </div>
+        </div> */}
+            </div>
+          </>
+        )}
+      </Spinner>
+    </>
+  );
+}
