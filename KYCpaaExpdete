@@ -1,0 +1,1548 @@
+import React, { useState, useEffect, useReducer } from "react";
+import Back_arrow from "../../../assets/images/click2remit/Back_arrow.svg";
+import { Row, Col } from "react-bootstrap";
+import {
+  Form,
+  Input,
+  Tabs,
+  Select,
+  notification,
+  Spin,
+  Checkbox,
+  Upload,
+  Button,
+  DatePicker,
+  message,
+  Modal,
+  Radio,
+} from "antd";
+import moment from "moment";
+import { Link, useNavigate, useLocation } from "react-router-dom";
+import Swal from "sweetalert2";
+import { useDispatch, useSelector } from "react-redux";
+
+import { encrypt, decrypt, publickey } from "../../../helpers/makeHash";
+// import DefaultLayout from "../layout/DefaultLayout";
+import { ProfileAPI } from "../../../apis/ProfileAPI";
+import { config } from "../../../config";
+import { UploadOutlined } from "@ant-design/icons";
+import { TransactionAPI } from "../../../apis/TransactionAPI";
+import { ViAmericaJumioAPI } from "../../../apis/ViAmericaApi/JumioAPI";
+import { GuestAPI } from "../../../apis/GuestAPI";
+import useHttp from "../../../hooks/useHttp";
+import { inputValidations } from "../../../services/validations/validations";
+import Main from "../Layouts/Main";
+import CustomInput from "../../../reusable/CustomInput";
+import FloatInput from "../../../reusable/FloatInput";
+import { setKycDoneFrmTxnValidate } from "../../../reducers/userReducer";
+// import JumioPageC2R from "../Profile/JumioPageC2R";
+// import JumioPage from "../user/profile/JumioPage";
+const { TabPane } = Tabs;
+const { Option } = Select;
+
+export default function KycPage(props) {
+  const [form] = Form.useForm();
+  const AuthReducer = useSelector((state) => state.user);
+  const ConfigReducer = useSelector((state) => state.user);
+  const { inputFields } = ConfigReducer.groupIdSettings.kyc;
+  const [loading, setLoader] = useState(0);
+  const [issuerCountryDropdown, setIssuerCountryDropdown] = useState(false);
+  const [docObj, setDocObj] = useState("");
+  const [docAddressObj, setAddressDocObj] = useState("");
+  const [amountRange, setAmountRange] = useState("");
+  const [isJumioKYCVisible, setIsJumioKYCVisible] = useState(false);
+
+  let navigate = useNavigate();
+  const location = useLocation();
+  const dispatch = useDispatch();
+  const countryCodeList = [{ countryName: "United States of America", countryPhoneCode: "1" }];
+
+  const [state, setState] = useReducer((state, newState) => ({ ...state, ...newState }), {
+    clientId: AuthReducer.clientId,
+    groupId: AuthReducer.groupId,
+    twofa: AuthReducer.twofa,
+    sessionId: AuthReducer.sessionId,
+    userID: AuthReducer.userID,
+    userFullName: AuthReducer.userFullName,
+    sourceOFFundLists: [],
+    additionalInfo2: "",
+    occupationLists: [],
+    industryLists: [],
+    _industryId: "",
+    _sourceOfFundId: "",
+    _occupationId: "",
+    uniqueIdentifierLists: [],
+    stateLists: [],
+    cityLists: [],
+    profileData: [],
+    btnDisabled: true,
+    stateListsIssuer: [],
+    issuerCountryList: [],
+    idIssuer: "",
+    ssnFlag: "",
+    jumioComplete: true,
+    redirectPage: "",
+    redirectPageState: [],
+    redirectUrl: "",
+  });
+
+  const hookGetProfile = useHttp(ProfileAPI.getProfile);
+  const hookEditProfileContact = useHttp(ProfileAPI.editProfileContact);
+  const hookEditProfileChangeCountry = useHttp(ProfileAPI.editProfileChangeCountry);
+  const hookUserDocUpload = useHttp(ProfileAPI.userDocUpload);
+  const hookGetSenderKycDetails = useHttp(ProfileAPI.getSenderKycDetails);
+  const hookViaUpdateSender = useHttp(ProfileAPI.viaUpdateSender);
+
+  const hookGetStateCities = useHttp(GuestAPI.stateCities);
+  const hookGetOccupationLists = useHttp(GuestAPI.occupationLists);
+  const hookGetIndustryLists = useHttp(GuestAPI.industryLists);
+  const hookGetUniqueIdentifierList = useHttp(GuestAPI.uniqueIdentifierList);
+  const hookGetCountryStates = useHttp(GuestAPI.countryStates);
+  const hookGetCountryLists = useHttp(GuestAPI.countryList);
+  const hookGetSourceOFFundLists = useHttp(TransactionAPI.sourceOFFundLists);
+  const hookViaJumioInit = useHttp(ViAmericaJumioAPI.viaJumioInit);
+  const hookViaJumioStatus = useHttp(ViAmericaJumioAPI.viaJumioStatus);
+  useEffect(async () => {
+    window.scrollTo({ top: 0, behavior: "smooth" });
+    getUserProfile();
+    getSourceOFFundLists();
+    // getOccupationLists();
+    getIndustryLists();
+    getUniqueIdentifierNames();
+    getStateLists();
+    setState({
+      redirectPage: location.state?.fromPage,
+      redirectPageState: location.state?.fromPageState,
+    });
+    // getSenderKycDetails();
+    viAmericaTransactionValidate();
+    if (props?.redirectKYC) {
+      setState({ btnDisabled: false, redirectUrl: "", jumioComplete: false });
+    } else {
+      viaJumioInit();
+    }
+  }, []);
+  useEffect(() => {
+    // Create IE + others compatible event handler
+
+    var eventMethod = window.addEventListener ? "addEventListener" : "attachEvent";
+    var eventer = window[eventMethod];
+    var messageEvent = eventMethod == "attachEvent" ? "onmessage" : "message";
+    eventer(
+      messageEvent,
+      function (e) {
+        if (e.data.data == "JUMIO_FAIL") {
+          setState({ redirectUrl: "" });
+          setIsJumioKYCVisible(false);
+        } else if (e.data.data == "JUMIO_SUCCESS") {
+          setState({ redirectUrl: "", jumioComplete: false });
+          setState({ btnDisabled: false });
+          viaJumioStatus();
+        }
+      },
+      false,
+    );
+
+    // setInterval(function() {
+    //   console.log("parent received message!:  ", e.data);
+    // },1000);
+  }, []);
+  useEffect(() => {
+    autoFillKYC(state.profileData);
+  }, [state.profileData || state.industryLists]);
+  const viaJumioStatus = () => {
+    const payload = {
+      requestType: "CALCULATECOST",
+      userId: AuthReducer.userID,
+      method: "GET",
+    };
+
+    setLoader((prevState) => prevState + 1);
+    hookViaJumioStatus.sendRequest(payload, function (data) {
+      setLoader((prevState) => prevState - 1);
+      if (data.status == "S") {
+        if (data.shouldInitSession == true) {
+          notification.success({ message: "Please upload documents manually" });
+          navigate("/user-doc-upload");
+        } else {
+          notification.success({ message: "Jumio kyc has been done" });
+        }
+      } else {
+        notification.error({
+          message: data.errorMessage ? data.errorMessage : "Via jumio status failed",
+        });
+      }
+    });
+  };
+  const viaJumioInit = () => {
+    const payload = {
+      requestType: "JUMIOINIT",
+      userId: AuthReducer.userID,
+      method: "POST",
+    };
+
+    setLoader((prevState) => prevState + 1);
+    hookViaJumioInit.sendRequest(payload, function (data) {
+      setLoader((prevState) => prevState - 1);
+      if (data.status == "S") {
+        setState({ redirectUrl: data.message });
+        setIsJumioKYCVisible(true);
+      } else {
+        notification.error({
+          message: data.errorMessage ? data.errorMessage : "Via Jumio init failed.",
+        });
+      }
+    });
+  };
+  const viAmericaTransactionValidate = () => {
+    if (location?.state?.needID) {
+      setState({ btnDisabled: true });
+      setIsJumioKYCVisible(true);
+    } else if (location?.state?.needKYC) {
+      setState({ btnDisabled: false, jumioComplete: false });
+    } else {
+      setState({ btnDisabled: true });
+      setIsJumioKYCVisible(true);
+    }
+  };
+  const getSenderKycDetails = () => {
+    const payload = {
+      requestType: "SENDERKYCDTLS",
+      userId: AuthReducer.userID,
+    };
+    setLoader((prevState) => prevState + 1);
+    hookGetSenderKycDetails.sendRequest(payload, function (data) {
+      setLoader((prevState) => prevState - 1);
+      if (data.isIfrKycDone == "Y") {
+        setState({ btnDisabled: true });
+        setIsJumioKYCVisible(true);
+      } else if (data.isJumioDone == "Y") {
+        setState({ btnDisabled: false });
+      } else {
+        setState({ btnDisabled: true });
+        setIsJumioKYCVisible(true);
+      }
+    });
+  };
+  const getUserProfile = async () => {
+    let payload = {
+      requestType: "USERPROFILE",
+      userId: state.userID,
+    };
+    setLoader((prevState) => prevState + 1);
+    hookGetProfile.sendRequest(payload, function (data) {
+      setLoader((prevState) => prevState - 1);
+      if (data.status === "S") {
+        setState({ profileData: data });
+        // autoFillKYC(data);
+      } else {
+        notification.error({
+          message: data.errorMessage ? data.errorMessage : "Get Profile failed.",
+        });
+      }
+    });
+  };
+  const autoFillKYC = (data) => {
+    setState({ _occupationId: data.occupation });
+    state?.industryLists?.find((i) => {
+      if (i.industryDesc == data.industryDesc) {
+        setState({ _industryId: i.industryId });
+      }
+    });
+
+    let sourceofFund = "";
+    state?.sourceOFFundLists?.find((i) => {
+      if (i.sourceFundId == data.sourceOfFundName) {
+        setState({ _sourceOfFundId: i.sourceFundId });
+        sourceofFund = i.sourceOfFund;
+      }
+    });
+    let empPhone = data?.employerPhone?.split("-")[1];
+    if (data.ssn != "") {
+      setState({ ssnFlag: "Y" });
+    }
+    form.setFieldsValue({
+      employerPhoneNumer: empPhone,
+      ssn: data.ssn,
+      ssnFlag: "Y",
+      companyName: data.employer,
+      industry: data.industryDesc,
+      sourcefund: sourceofFund,
+      occupation: data.occupationDesc,
+    });
+  };
+  const handleOk = () => {
+    setIsJumioKYCVisible(false);
+  };
+
+  const handleCancel = () => {
+    setIsJumioKYCVisible(false);
+  };
+
+  const onSelectStateHandler = async (stateCode) => {
+    const cityPayload = {
+      requestType: "CITILIST",
+      countryCode: AuthReducer.sendCountryCode,
+      stateCode: stateCode,
+    };
+
+    setLoader((prevState) => prevState + 1);
+    hookGetStateCities.sendRequest(cityPayload, function (data) {
+      setLoader((prevState) => prevState - 1);
+      if (data.status === "S") {
+        setState({
+          cityLists: data.responseData,
+        });
+      } else {
+        notification.error({
+          message: data.errorMessage ? data.errorMessage : "Get state cities failed.",
+        });
+      }
+    });
+  };
+
+  const getSourceOFFundLists = () => {
+    const payload = {
+      requestType: "FUNDSOURCELIST",
+    };
+    setLoader((prevState) => prevState + 1);
+    hookGetSourceOFFundLists.sendRequest(payload, function (data) {
+      setLoader((prevState) => prevState - 1);
+      if (data.status == "S") {
+        setState({ sourceOFFundLists: data.responseData });
+      } else {
+        notification.error({
+          message: data.errorMessage ? data.errorMessage : "Source of fund failed.",
+        });
+      }
+    });
+  };
+
+  const getIndustryLists = () => {
+    let payload = {
+      requestType: "INDUSTRYLIST",
+      keyword: "",
+    };
+
+    setLoader((prevState) => prevState + 1);
+    hookGetIndustryLists.sendRequest(payload, function (data) {
+      setLoader((prevState) => prevState - 1);
+      if (data.status === "S") {
+        setState({ industryLists: data.responseData });
+      } else {
+        notification.error({
+          message: data.errorMessage ? data.errorMessage : "Industry list failed.",
+        });
+      }
+    });
+  };
+  const getUniqueIdentifierNames = async () => {
+    let payload = {
+      requestType: "UNNAMESLIST",
+      idFor: "RECV",
+    };
+
+    setLoader((prevState) => prevState + 1);
+    hookGetUniqueIdentifierList.sendRequest(payload, function (data) {
+      setLoader((prevState) => prevState - 1);
+      if (data.status === "S") {
+        setState({ uniqueIdentifierLists: data.responseData });
+      }
+    });
+  };
+
+  const getStateLists = async () => {
+    let payload = {
+      requestType: "STATELIST",
+      countryCode: AuthReducer.sendCountryCode,
+      keyword: "",
+    };
+
+    setLoader((prevState) => prevState + 1);
+    hookGetCountryStates.sendRequest(payload, function (data) {
+      setLoader((prevState) => prevState - 1);
+      if (data.status === "S") {
+        setState({ stateLists: data.responseData });
+        const stateIssuerArray = [
+          ...data.responseData,
+          {
+            stateCode: "OTHER",
+            state: "Other",
+          },
+        ];
+        setState({ stateListsIssuer: stateIssuerArray });
+      }
+    });
+  };
+
+  const getIssuerCountryList = async () => {
+    let payload = {
+      requestType: "COUNTRYLIST",
+    };
+
+    setLoader((prevState) => prevState + 1);
+    hookGetCountryLists.sendRequest(payload, function (data) {
+      setLoader((prevState) => prevState - 1);
+      if (data.status === "S") {
+        setState({ issuerCountryList: data.responseData });
+      }
+    });
+  };
+
+  const onFinish = (value) => {
+    let editProfilePayload = {
+      occupation: state._occupationId,
+      homePhoneNo: "",
+      companyName: value.companyName,
+      emailId: state.profileData.emailId,
+      pageName: "EDITPROFILE",
+      ssn: value.ssn ? value.ssn : "",
+      passportExpiryDt:
+        state.profileData.passportExpiryDt == "1900-01-01"
+          ? ""
+          : state.profileData.passportExpiryDt,
+      address5: state.profileData.address5,
+      pep: "",
+      passportIssueDate: "",
+      address4: "",
+      profession: "606",
+      isSameCommAddressFlag: "Y",
+      motherMaidenName: "",
+      marketingCommunication: "",
+      tnc: "Y",
+      primaryBusinessFunction: "",
+      firstName: state.profileData.firstName,
+      nationality: "US",
+      flatNo: "",
+      dob: state.profileData.dob,
+      SIN: value.ssn ? value.ssn : "",
+      salutation: "",
+      periodicUpdate: "",
+      passportIssuePlace: "",
+      income: "0",
+      lastName: state.profileData.lastName,
+      gender: state.profileData.gender ? state.profileData.gender : "M",
+
+      // data for viamerica
+      employer: value.companyName,
+      employerPhoneCode: value.employerPhoneCode,
+      employerPhoneNo: value.employerPhoneNumer,
+
+      // address
+      address1: window.btoa(state.profileData.address1),
+      address2: window.btoa(state.profileData.address2),
+      address3: "",
+      state: window.btoa(state.profileData.state),
+      city: window.btoa(state.profileData.city),
+      zipCode: state.profileData.zip,
+      sendCountry: AuthReducer.sendCountryCode,
+
+      // communication address
+      commAddress1: window.btoa(state.profileData.address1),
+      commAddress2: window.btoa(state.profileData.address2),
+      commStateProvince: state.profileData.state,
+      commCity: state.profileData.city,
+      commPostalCode: state.profileData.zip,
+      documentType: value.idtype,
+      industry: state._industryId,
+      title: "",
+      isEmailVerified: "Y",
+      sourceOfFund: state._sourceOfFundId,
+      drivingLicenseNo: value.idtype === "DL" ? value.id_number : "",
+      mobilePhoneCode: state.profileData.mobilePhoneCode,
+      clientId: "VIAMERICAS",
+      requestType: "EDITPROFILE",
+      extraInfoRequire: "", //Y
+      citizenship: "US", //US
+      mobileNo: state.profileData.mobileNo,
+      userId: AuthReducer.userID,
+      commCountry: AuthReducer.sendCountryCode,
+      isMobileVerified: "Y",
+
+      middleName: state.profileData.middleName,
+      uniqueIdentifierType: value.idtype,
+      uniqueIdentifierValue: value.id_number,
+    };
+    setLoader((prevState) => prevState + 1);
+    hookEditProfileChangeCountry.sendRequest(editProfilePayload, function (data) {
+      setLoader((prevState) => prevState - 1);
+      if (data.status == "S") {
+        // notification.success({ message: data.message });
+        notification.success({ message: "Congratulations on completing the KYC." });
+        // viaUpdateSender();
+        if (props.fromReview) {
+          props.setState({ viewTarnsaction: true });
+        } else {
+          dispatch(setKycDoneFrmTxnValidate(true));
+          navigate("/new-transaction", {
+            state: {
+              autoFillData: location?.state?.autoFillData,
+              autoFill: location?.state?.autoFill,
+            },
+          });
+        }
+        // navigate("/new-transaction", { state: state.redirectPageState });
+        // const editProfileContactPayload = {
+        //   requestType: "EDITPROFILECONTACT",
+        //   clientId: "VIAMERICAS",
+        //   userId: AuthReducer.userID,
+        //   remitRequestId: null,
+        //   webName: "WEB1",
+        //   dataFormat: "JSON",
+        //   sendCountry: AuthReducer.sendCountryCode,
+        //   mobilePhoneCode: "1",
+        //   mobileNo: "9234567899",
+        //   altMobilePhoneCode: "1",
+        //   altMobileNo: "",
+        //   industry: null,
+        //   income: null,
+        //   altEmailId: "",
+        //   phoneCityCode: "",
+        // };
+        // setLoader((prevState) => prevState + 1);
+        // hookEditProfileContact.sendRequest(editProfileContactPayload, function (dataEPC) {
+        //   setLoader((prevState) => prevState - 1);
+        //   if (dataEPC.status == "S") {
+        //     navigate("/new-transaction", { state: state.redirectPageState });
+        //   } else {
+        //     notification.error({ message: dataEPC.errorMessage });
+        //   }
+        // });
+        // userDocUpload({ docType: editProfilePayload.uniqueIdentifierType });
+        // userAddressDocUpload({ docType: value.addresstype });
+      } else {
+        notification.error({
+          message: data.errorMessage ? data.errorMessage : "Edit Profile change country failed.",
+        });
+        let errors = [];
+        data.errorList.forEach((error, i) => {
+          let errorData = {
+            name: error.field,
+            errors: [error.error],
+          };
+          errors.push(errorData);
+        });
+
+        if (errors.length > 0) form.setFields(errors);
+      }
+    });
+  };
+  const viaUpdateSender = () => {
+    let payload = {
+      clientId: "VIAMERICAS",
+      requestType: "VIAUPDATESENDER",
+      sendCountry: AuthReducer.sendCountryCode,
+      userId: AuthReducer.userID,
+    };
+    setLoader((prevState) => prevState + 1);
+    hookViaUpdateSender.sendRequest(payload, function (data) {
+      setLoader((prevState) => prevState - 1);
+      if (data.status == "S") {
+        navigate("/new-transaction", {
+          state: {
+            autoFillData: location?.state?.autoFillData,
+            autoFill: location?.state?.autoFill,
+          },
+        });
+      }
+    });
+  };
+  const userDocUpload = async (docData) => {
+    let docPayload = {
+      requestType: "USERDOCUPLOAD",
+      docType: docData.docType,
+      docName: docObj.fileName,
+      docExtension: docObj.fileName.split(".").pop(),
+      userId: AuthReducer.userID,
+      document: docObj.docUrl,
+    };
+
+    setLoader(true);
+    hookUserDocUpload.sendRequest(docPayload, function (data) {
+      if (data.status == "S") {
+        // alert("Doc Uplaoded");
+        Swal.fire({
+          title: "Success",
+          text: data.message,
+          icon: "success",
+          confirmButtonColor: "#2dbe60",
+        }).then((result) => {
+          if (result.isConfirmed) {
+            // navigate('/signin');
+            // navigate('/new-transaction')
+
+            navigate("/new-transaction", { state: state.redirectPageState });
+            //   window.location.href = "/signin";
+          }
+        });
+        setLoader(false);
+      } else {
+        setLoader(false);
+      }
+    });
+  };
+
+  const userAddressDocUpload = async (docData) => {
+    let docPayload = {
+      requestType: "USERDOCUPLOAD",
+      docType: docData.docType,
+      docName: docAddressObj.fileName,
+      docExtension: docAddressObj.fileName.split(".").pop(),
+      userId: AuthReducer.userID,
+      document: docAddressObj.docUrl,
+    };
+
+    setLoader(true);
+    hookUserDocUpload.sendRequest(docPayload, function (data) {
+      if (data.status == "S") {
+        // alert("Doc Uplaoded");
+        Swal.fire({
+          title: "Success",
+          text: data.message,
+          icon: "success",
+          confirmButtonColor: "#2dbe60",
+        }).then((result) => {
+          if (result.isConfirmed) {
+            // navigate('/signin');
+            // navigate('/new-transaction')
+
+            navigate("/new-transaction", { state: state.redirectPageState });
+            //   window.location.href = "/signin";
+          }
+        });
+        setLoader(false);
+      } else {
+        setLoader(false);
+      }
+    });
+  };
+  // console.log(state.redirectPageState)
+  const onChangeSameAddress = (e) => {
+    if (e.target.checked) {
+      const _commAddress1 = form.getFieldValue("commAddress1");
+      const _commAddress2 = form.getFieldValue("commAddress2");
+      const _commPostalCode = form.getFieldValue("commPostalCode");
+      const _commStateProvince = form.getFieldValue("commStateProvince");
+      const _commCity = form.getFieldValue("commCity");
+      const _commCountry = form.getFieldValue("commCountry");
+      form.setFieldsValue({
+        address1: _commAddress1,
+        address2: _commAddress2,
+        zipCode: _commPostalCode,
+        state: _commStateProvince,
+        city: _commCity,
+        sendCountry: _commCountry,
+      });
+    } else {
+      form.setFieldsValue({
+        address1: "",
+        address2: "",
+        zipCode: "",
+        state: "",
+        city: "",
+        sendCountry: "",
+      });
+    }
+  };
+
+  const normFile = (e) => {
+    // console.log("Upload event:", e);
+    if (Array.isArray(e)) {
+      return e;
+    }
+    const fl = e.fileList[0];
+
+    return e && e.fileList;
+  };
+
+  const onChangeIssuerID = (value, type) => {
+    if (value === "Other") {
+      setIssuerCountryDropdown(true);
+      getIssuerCountryList();
+    } else {
+      setState({
+        idIssuer: value,
+      });
+      if (type === "ISSUER_STATE") {
+        setIssuerCountryDropdown(false);
+      }
+    }
+  };
+
+  const onAmountChangeHandler = (value) => {
+    setAmountRange(value);
+  };
+
+  const handleGotoNext = () => {
+    navigate("/new-transaction", { state: state.redirectPageState });
+  };
+  const onChangeIndustrylist = (e) => {
+    let industry = JSON.parse(e);
+    setState({ _industryId: industry.industryId });
+    form.setFieldsValue({ occupation: "" });
+
+    let payload = {
+      requestType: "LEAD",
+    };
+
+    setLoader((prevState) => prevState + 1);
+    hookGetOccupationLists.sendRequest(payload, function (data) {
+      setLoader((prevState) => prevState - 1);
+      if (data.status === "S") {
+        let occupationList = [];
+        data.responseData.map((i) => {
+          if (i.industryId == industry.industryCode) {
+            occupationList.push(i);
+          }
+        });
+        setState({ occupationLists: occupationList });
+      }
+    });
+  };
+  const onChangeSourceOfFund = (e) => {
+    state.sourceOFFundLists.find((i) => {
+      if (e == i.sourceOfFund) {
+        setState({ _sourceOfFundId: i.sourceFundId });
+      }
+    });
+  };
+  return (
+    <Main sidebar={props.fromReview ? false : true}>
+      {/* <div className="p-2 inner_title_wrapper">
+        <div className="container">
+          <h2 className="mb-0 inner_title">KYC</h2>
+        </div>
+      </div> */}
+      {/* <DefaultLayout
+        accessToken={props.appState.accessToken}
+        isLoggedIn={props.appState.isLoggedIn}
+        publicKey={props.appState.publicKey}
+      > */}
+      {/* <JumioPage/> */}
+      {/* <button onClick={handleGotoNext}>Go to next</button> */}
+      <Spin spinning={loading === 0 ? false : true}>
+        {!state.showConfirmBankAccountDetails && (
+          <div className="container h-100">
+            <div className="row h-100 ">
+              <div className="col-md-10 col-sm-24 ">
+                <div className="CR-default-box CR-max-width-620">
+                  <Form
+                    form={form}
+                    onFinish={onFinish}
+                    initialValues={{
+                      employerPhoneCode: "1",
+                      sendCountry: AuthReducer.sendCountryCode === "US" ? "USA" : "UK",
+                      commCountry: AuthReducer.sendCountryCode === "US" ? "USA" : "UK",
+                    }}
+                  >
+                    <Row className="justify-content-center CR-side-space">
+                      <Col md={12}>
+                        <h4 className="mb-3">KYC</h4>
+                      </Col>
+                      {AuthReducer.sendCountryCode !== "US" && (
+                        <>
+                          <Col md={12}>
+                            <CustomInput showLabel={false} name="amount" label="Amount" required>
+                              <FloatInput
+                                type="select"
+                                placeholder="Amount"
+                                showSearch
+                                onChange={onAmountChangeHandler}
+                              >
+                                <Option key="01" value="_2500">
+                                  Up to $ 2,500
+                                </Option>
+                                <Option key="01" value="2501_2999">
+                                  Between $ 2,501 to $ 2,999
+                                </Option>
+                                <Option key="01" value="3000_">
+                                  Above $ 3,000
+                                </Option>
+                                <Option key="01" value="7000_">
+                                  Above $ 7,500
+                                </Option>
+                              </FloatInput>
+                            </CustomInput>
+                          </Col>
+                          <Col md={12}>
+                            <Row className="justify-content-center">
+                              <Col md={6}>
+                                <CustomInput
+                                  showLabel={false}
+                                  name="idtype"
+                                  label="Id Type"
+                                  required
+                                >
+                                  <FloatInput type="select" placeholder="Select ID Type" showSearch>
+                                    {state.uniqueIdentifierLists.map((uiRow, i) => {
+                                      return (
+                                        <Option
+                                          key={i}
+                                          value={uiRow.docType}
+                                        >{`${uiRow.docName}`}</Option>
+                                      );
+                                    })}
+                                  </FloatInput>
+                                </CustomInput>
+                              </Col>
+                              <Col md={6}>
+                                <CustomInput
+                                  showLabel={false}
+                                  name="idissuer"
+                                  label="Id Issuer"
+                                  required
+                                >
+                                  <FloatInput
+                                    type="select"
+                                    placeholder="Select ID Issuer"
+                                    size="large"
+                                    onChange={(value) => {
+                                      onChangeIssuerID(value, "ISSUER_STATE");
+                                    }}
+                                    showSearch
+                                  >
+                                    {state.stateListsIssuer.map((uiRow, i) => {
+                                      return (
+                                        <Option
+                                          key={i}
+                                          value={uiRow.state}
+                                        >{`${uiRow.state}`}</Option>
+                                      );
+                                    })}
+                                  </FloatInput>
+                                </CustomInput>
+                                {issuerCountryDropdown && (
+                                  <CustomInput
+                                    showLabel={false}
+                                    name="idissuercountry"
+                                    label="Id Issuer Country"
+                                    required
+                                  >
+                                    <FloatInput
+                                      type="select"
+                                      className="w-100 mt-2"
+                                      placeholder="Select ID Issuer Country"
+                                      size="large"
+                                      onChange={(value) => {
+                                        onChangeIssuerID(value, "ISSUER_COUNTRY");
+                                      }}
+                                      showSearch
+                                    >
+                                      {state.issuerCountryList.map((uiRow, i) => {
+                                        return (
+                                          <Option
+                                            key={i}
+                                            value={uiRow.countryName}
+                                          >{`${uiRow.countryName}`}</Option>
+                                        );
+                                      })}
+                                    </FloatInput>
+                                  </CustomInput>
+                                )}
+                              </Col>
+                            </Row>
+                          </Col>
+                          <Col md={6}>
+                            <CustomInput
+                              showLabel={false}
+                              name="id_number"
+                              label="Id Number"
+                              min={3}
+                              max={20}
+                              validationRules={[
+                                {
+                                  pattern: /^[A-Za-z0-9 ]+$/,
+                                  message: "Special Characters not allowed",
+                                },
+                              ]}
+                              required
+                            >
+                              <FloatInput placeholder="ID Number" />
+                            </CustomInput>
+                          </Col>
+
+                          <Col md={6}>
+                            <CustomInput
+                              showLabel={false}
+                              name="expiryDate"
+                              label="ExpiryDate"
+                              required
+                            >
+                              <FloatInput
+                                type="datepicker"
+                                placeholder="Select Expiry"
+                                size="large"
+                                onChange={(value) => {
+                                  onChangeIssuerID(value, "ISSUER_STATE");
+                                }}
+                                showSearch
+                              >
+                                <DatePicker
+                                  size="large"
+                                  className="w-100"
+                                  // defaultPickerValue={moment().subtract(18, "years")}
+                                  disabledDate={(current) => {
+                                    let customDate = moment().format("YYYY-MM-DD");
+                                    return current && current < moment(customDate, "YYYY-MM-DD");
+                                  }}
+                                  onChange={(value, dateString) => {
+                                    let formatedDate = moment(dateString).format("MM/DD/YYYY");
+                                    value !== null
+                                      ? setState({ additionalInfo2: formatedDate })
+                                      : setState({ additionalInfo2: "" });
+                                  }}
+                                />
+                              </FloatInput>
+                            </CustomInput>
+                          </Col>
+                          {!inputFields?.ssn?.hidden &&
+                            (amountRange === "3000_" || amountRange === "7000_" ? (
+                              <>
+                                <Col md={6}>
+                                  <label className="form-label">
+                                    <span className="red_ast">*</span>
+                                    Social Security Number
+                                  </label>
+                                  <Form.Item
+                                    className="form-item"
+                                    name="ssn"
+                                    rules={[
+                                      {
+                                        required: true,
+                                        message: "Enter Social Security Number",
+                                      },
+                                      {
+                                        min: 9,
+                                        max: 9,
+                                        message: "SSN number must be 9 digit.",
+                                      },
+                                      {
+                                        pattern: /^[0-9\b]+$/,
+                                        message: "Only Numbers allowed",
+                                      },
+                                    ]}
+                                  >
+                                    <Input size="large" placeholder="Social Security Number" />
+                                  </Form.Item>
+                                </Col>
+                                <Col md={6}>
+                                  <label className="form-label">
+                                    <span className="red_ast">*</span>
+                                    Confirm Social Security Number
+                                  </label>
+                                  <Form.Item
+                                    className="form-item"
+                                    name="confirm_ssn"
+                                    rules={[
+                                      {
+                                        required: true,
+                                        message: "Enter Confirm Social Security Number.",
+                                      },
+                                      {
+                                        min: 9,
+                                        max: 9,
+                                        message: "SSN number must be 9 digit.",
+                                      },
+                                      {
+                                        pattern: /^[0-9\b]+$/,
+                                        message: "Only Numbers allowed",
+                                      },
+                                      ({ getFieldValue }) => ({
+                                        validator(rule, value) {
+                                          if (!value || getFieldValue("ssn") === value) {
+                                            return Promise.resolve();
+                                          }
+                                          return Promise.reject(
+                                            "The two Social Security Number that you entered do not match!",
+                                          );
+                                        },
+                                      }),
+                                    ]}
+                                  >
+                                    <Input
+                                      size="large"
+                                      placeholder="Confirm Social Security Number"
+                                    />
+                                  </Form.Item>
+                                </Col>
+                              </>
+                            ) : (
+                              ""
+                            ))}
+                        </>
+                      )}
+
+                      <Col md={12}>
+                        <Row className="justify-content-center">
+                          {!inputFields?.sourceOfFund?.hidden && (
+                            <Col md={6}>
+                              <CustomInput
+                                showLabel={false}
+                                name="sourcefund"
+                                label="Source fund"
+                                required
+                              >
+                                <FloatInput
+                                  type="select"
+                                  placeholder="Select Source of fund"
+                                  size="large"
+                                  onChange={onChangeSourceOfFund}
+                                  showSearch
+                                >
+                                  {state.sourceOFFundLists.map((sList, i) => {
+                                    return (
+                                      <Option key={i} value={sList.sourceOfFund}>
+                                        {sList.sourceOfFund}
+                                      </Option>
+                                    );
+                                  })}
+                                </FloatInput>
+                              </CustomInput>
+                            </Col>
+                          )}
+                          {AuthReducer.sendCountryCode !== "US" && (
+                            <Col md={12}>
+                              <CustomInput
+                                showLabel={false}
+                                name="remittance_freq"
+                                label="Remittance Frequency"
+                                required
+                              >
+                                <FloatInput
+                                  type="select"
+                                  placeholder="Select Remittance Frequency"
+                                  size="large"
+                                  showSearch
+                                >
+                                  <Option value="WEEKLY">Weekly</Option>
+                                  <Option value="MONTHLY">Monthly</Option>
+                                  <Option value="QUARTERLY">Quarterly</Option>
+                                  <Option value="ANNUALLY">Annually</Option>
+                                  <Option value="ONE_OFF">One-Off</Option>
+                                </FloatInput>
+                              </CustomInput>
+                            </Col>
+                          )}
+
+                          <Col md={6}>
+                            <CustomInput
+                              showLabel={false}
+                              name="industry"
+                              label="Industry Name"
+                              required
+                            >
+                              <FloatInput
+                                type="select"
+                                placeholder="Select Industry"
+                                size="large"
+                                onChange={onChangeIndustrylist}
+                                showSearch
+                              >
+                                {state.industryLists.map((ocRow, i) => {
+                                  return (
+                                    <Option
+                                      key={i}
+                                      value={JSON.stringify(ocRow)}
+                                    >{`${ocRow.industryName}`}</Option>
+                                  );
+                                })}
+                              </FloatInput>
+                            </CustomInput>
+                          </Col>
+                          <Col md={12}>
+                            <CustomInput
+                              showLabel={false}
+                              name="companyName"
+                              label="Employer Name"
+                              validationRules={[
+                                {
+                                  pattern: /^([\w]{1,})+\s+([\w\s]{1,})+$/i,
+                                  message: "Please enter valid name.",
+                                },
+                                {
+                                  pattern: /^([^0-9]*)$/,
+                                  message: "Number not allow in name",
+                                },
+                              ]}
+                              min={3}
+                              max={50}
+                              required
+                            >
+                              <FloatInput placeholder="Employer Name"></FloatInput>
+                            </CustomInput>
+                          </Col>
+                          <Col md={6}>
+                            <CustomInput
+                              showLabel={false}
+                              name="employerPhoneCode"
+                              label="Mobile Phone Code"
+                              required
+                            >
+                              <FloatInput
+                                disabled
+                                type="select"
+                                placeholder="Mobile Phone Code"
+                                size="large"
+                                showSearch
+                              >
+                                {countryCodeList.map((i) => {
+                                  return (
+                                    <Option value={i.countryPhoneCode}>
+                                      {i.countryPhoneCode} {i.countryName}
+                                    </Option>
+                                  );
+                                })}
+                              </FloatInput>
+                            </CustomInput>
+                          </Col>
+
+                          <Col md={6}>
+                            <CustomInput
+                              showLabel={false}
+                              name="employerPhoneNumer"
+                              label="Employer Phone Number"
+                              min={10}
+                              max={10}
+                              validationRules={[
+                                {
+                                  pattern: /^[0-9\b]+$/,
+                                  message: "Only Numbers allowed",
+                                },
+                              ]}
+                              required
+                            >
+                              <FloatInput placeholder="Employer Phone Number"></FloatInput>
+                            </CustomInput>
+                          </Col>
+
+                          <Col md={12}>
+                            <CustomInput
+                              showLabel={false}
+                              name="occupation"
+                              label="Occupation"
+                              required
+                            >
+                              <FloatInput
+                                type="select"
+                                placeholder="Select Occupation"
+                                size="large"
+                                onChange={(e) => setState({ _occupationId: e })}
+                                showSearch
+                              >
+                                {state.occupationLists.map((ocRow, i) => {
+                                  return (
+                                    <Option
+                                      key={i}
+                                      value={ocRow.occupationId}
+                                    >{`${ocRow.occupationName}`}</Option>
+                                  );
+                                })}
+                              </FloatInput>
+                            </CustomInput>
+                          </Col>
+                          <Col md={12}>
+                            <div className="d-flex">
+                              <label style={{ fontSize: "16px" }} className="form-label">
+                                Do you have SSN? &nbsp;&nbsp;
+                              </label>
+                              <Form.Item
+                                name="ssnFlag"
+                                rules={[{ required: true, message: "Please choose one" }]}
+                              >
+                                <Radio.Group
+                                  onChange={(e) => setState({ ssnFlag: e.target.value })}
+                                >
+                                  <Radio value={"Y"}>Yes</Radio>
+                                  <Radio value={"N"}>No</Radio>
+                                </Radio.Group>
+                              </Form.Item>
+                            </div>
+                          </Col>
+                          {state.ssnFlag == "Y" && (
+                            <Col md={12}>
+                              <CustomInput
+                                validationRules={[
+                                  {
+                                    min: 9,
+                                    max: 9,
+                                    message: "SSN number must be 9 digit.",
+                                  },
+                                  {
+                                    pattern: /^[0-9\b]+$/,
+                                    message: "Only Numbers allowed",
+                                  },
+                                ]}
+                                showLabel={false}
+                                name="ssn"
+                                label="ssn"
+                                required
+                              >
+                                <FloatInput placeholder="SSN"></FloatInput>
+                              </CustomInput>
+                            </Col>
+                          )}
+                        </Row>
+                      </Col>
+                      {AuthReducer.sendCountryCode !== "US" && (
+                        <Col md={12}>
+                          <CustomInput
+                            showLabel={false}
+                            name="companyAddress"
+                            label="Company Address"
+                            min={3}
+                            max={100}
+                            required
+                          >
+                            <FloatInput placeholder="Company Address" showSearch></FloatInput>
+                          </CustomInput>
+                        </Col>
+                      )}
+
+                      {AuthReducer.sendCountryCode !== "US" && (
+                        <>
+                          <Col md={6}>
+                            <CustomInput
+                              showLabel={false}
+                              name="addresstype"
+                              label="Address Type"
+                              required
+                            >
+                              <FloatInput
+                                type="select"
+                                placeholder="Select Address Proof"
+                                size="large"
+                                showSearch
+                              >
+                                {state.uniqueIdentifierLists.map((uiRow, i) => {
+                                  return (
+                                    <Option
+                                      key={i}
+                                      value={uiRow.docType}
+                                    >{`${uiRow.docName}`}</Option>
+                                  );
+                                })}
+                              </FloatInput>
+                            </CustomInput>
+                          </Col>
+                          <Col md={6}>
+                            <CustomInput
+                              showLabel={false}
+                              name="addressdocnumber"
+                              label="Address Doc Number"
+                              required
+                            >
+                              <FloatInput placeholder="Document Number"></FloatInput>
+                            </CustomInput>
+                          </Col>
+                        </>
+                      )}
+
+                      {AuthReducer.sendCountryCode !== "US" && (
+                        <>
+                          <Col md={12}>
+                            <h4 className="mb-3">Billing Address</h4>
+                          </Col>
+                          <Col md={12}>
+                            <CustomInput
+                              showLabel={false}
+                              name="commAddress1"
+                              label="Company Address"
+                              min={3}
+                              max={100}
+                              required
+                            >
+                              <FloatInput placeholder="Address"></FloatInput>
+                            </CustomInput>
+                          </Col>
+                          <Col md={12}>
+                            <CustomInput
+                              showLabel={false}
+                              name="commAddress2"
+                              label="Company address 2"
+                              min={3}
+                              max={100}
+                              required
+                            >
+                              <FloatInput placeholder="Street / Line 1"></FloatInput>
+                            </CustomInput>
+                          </Col>
+
+                          <Col md={6}>
+                            <CustomInput
+                              showLabel={false}
+                              name="commPostalCode"
+                              label="Company Postal Code"
+                              validationRules={[
+                                ...inputValidations.zipCode(AuthReducer.sendCountryCode),
+                              ]}
+                              required
+                            >
+                              <FloatInput placeholder="Zipcode / Postal Code"></FloatInput>
+                            </CustomInput>
+                          </Col>
+                          <Col md={6}>
+                            <CustomInput
+                              showLabel={false}
+                              name="commStateProvince"
+                              label="Company State Province"
+                              required
+                            >
+                              <FloatInput
+                                type="select"
+                                className="w-100"
+                                placeholder="Select State"
+                                size="large"
+                                onChange={onSelectStateHandler}
+                                showSearch
+                              >
+                                {state.stateLists.map((st, i) => {
+                                  return <Option key={i} value={st.state}>{`${st.state}`}</Option>;
+                                })}
+                              </FloatInput>
+                            </CustomInput>
+                          </Col>
+                          <Col md={6}>
+                            <CustomInput
+                              showLabel={false}
+                              name="commCity"
+                              label="Company City"
+                              required
+                            >
+                              <FloatInput
+                                type="select"
+                                placeholder="Select City"
+                                size="large"
+                                showSearch
+                              >
+                                {state.cityLists.map((st, i) => {
+                                  return <Option key={i} value={st.city}>{`${st.city}`}</Option>;
+                                })}
+                              </FloatInput>
+                            </CustomInput>
+                          </Col>
+
+                          <Col md={6}>
+                            <CustomInput
+                              showLabel={false}
+                              name="commCountry"
+                              label="commCountry"
+                              required
+                            >
+                              <FloatInput
+                                readOnly={true}
+                                size="large"
+                                placeholder="Country"
+                              ></FloatInput>
+                            </CustomInput>
+                          </Col>
+                          <Col md={12}>
+                            <h4 className="mb-3">Residential Address</h4>
+                          </Col>
+                          <Col md={12}>
+                            <Form.Item name="same_as_billing" valuePropName="checked" noStyle>
+                              <Checkbox
+                                style={{ marginBottom: "10px" }}
+                                onChange={onChangeSameAddress}
+                              >
+                                Same as Billing Address
+                              </Checkbox>
+                            </Form.Item>
+                          </Col>
+                          <Col md={12}>
+                            <CustomInput
+                              showLabel={false}
+                              name="address1"
+                              label="address1"
+                              required
+                            >
+                              <FloatInput placeholder="Address"></FloatInput>
+                            </CustomInput>
+                          </Col>
+                          <Col md={12}>
+                            <CustomInput
+                              showLabel={false}
+                              name="address2"
+                              label="address2"
+                              required
+                            >
+                              <FloatInput placeholder="Street / Line 1"></FloatInput>
+                            </CustomInput>
+                          </Col>
+                          <Col md={6}>
+                            <CustomInput
+                              showLabel={false}
+                              name="zipCode"
+                              label="zipCode"
+                              validationRules={[
+                                ...inputValidations.zipCode(AuthReducer.sendCountryCode),
+                                ({ getFieldValue }) => ({
+                                  validator(rule, value) {
+                                    // validate space before and after string
+                                    let startSpace = /^\s/;
+                                    let endSpace = / $/;
+                                    if (startSpace.test(value) || endSpace.test(value)) {
+                                      return Promise.reject(
+                                        "Space not allowed before and after the Zipcode.",
+                                      );
+                                    }
+
+                                    return Promise.resolve();
+                                  },
+                                }),
+                              ]}
+                              required
+                            >
+                              <FloatInput placeholder="Zipcode / Postal Code">
+                                {state.occupationLists.map((ocRow, i) => {
+                                  return (
+                                    <Option
+                                      key={i}
+                                      value={ocRow.occupationId}
+                                    >{`${ocRow.occupationName}`}</Option>
+                                  );
+                                })}
+                              </FloatInput>
+                            </CustomInput>
+                          </Col>
+                          <Col md={6}>
+                            <CustomInput showLabel={false} name="state" label="state" required>
+                              <FloatInput
+                                type="select"
+                                placeholder="Select State"
+                                size="large"
+                                showSearch
+                              >
+                                {state.stateLists.map((st, i) => {
+                                  return <Option key={i} value={st.state}>{`${st.state}`}</Option>;
+                                })}
+                              </FloatInput>
+                            </CustomInput>
+                          </Col>
+                          <Col md={6}>
+                            <CustomInput showLabel={false} name="city" label="City" required>
+                              <FloatInput
+                                type="select"
+                                placeholder="Select City"
+                                size="large"
+                                showSearch
+                              >
+                                {state.cityLists.map((st, i) => {
+                                  return <Option key={i} value={st.city}>{`${st.city}`}</Option>;
+                                })}
+                              </FloatInput>
+                            </CustomInput>
+                          </Col>
+                          <Col md={6}>
+                            <CustomInput
+                              showLabel={false}
+                              name="sendCountry"
+                              label="sendCountry"
+                              required
+                            >
+                              <FloatInput placeholder="Country"></FloatInput>
+                            </CustomInput>
+                            {/* <label className="form-label">
+                        <span className="red_ast">*</span>Country
+                      </label>
+                      <Form.Item
+                        className="form-item"
+                        name="sendCountry"
+                        rules={[
+                          {
+                            required: true,
+                            message: "Enter Country.",
+                          },
+                        ]}
+                      >
+                        <Input readOnly={true} size="large" placeholder="Country" />
+                      </Form.Item> */}
+                          </Col>
+                        </>
+                      )}
+
+                      {state.jumioComplete && (
+                        <Col md={12}>
+                          <div className="d-flex justify-content-end">
+                            <button
+                              className="btn btn-secondary text-white btn-sm my-3"
+                              type="button"
+                              disabled={!state.btnDisabled}
+                              onClick={() => viaJumioInit()}
+                            >
+                              Click here to upload documents
+                            </button>
+                          </div>
+                        </Col>
+                      )}
+                    </Row>
+
+                    <Col md={12}>
+                      <div className="bottom_panel">
+                        <div className="d-flex justify-content-between align-items-center gap-3 gap-md-5">
+                          <div
+                            className="Back_arrow d-flex align-items-center"
+                            onClick={() => {
+                              navigate("/new-transaction", {
+                                state: {
+                                  autoFillData: location?.state?.autoFillData,
+                                  autoFill: location?.state?.autoFill,
+                                },
+                              });
+                            }}
+                          >
+                            <img src={Back_arrow} alt="backArrow" /> Back
+                          </div>
+                          <button
+                            htmlType="submit"
+                            style={{ maxWidth: "17rem" }}
+                            // disabled={state.btnDisabled}
+                            className=" CR-primary-btn"
+                          >
+                            Continue
+                          </button>
+                        </div>
+                      </div>
+                    </Col>
+                  </Form>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+      </Spin>
+
+      {/* <Modal
+        className="CR_jumio_modal"
+        width={1000}
+        open={isJumioKYCVisible}
+        footer={null}
+        // onOk={handleOk}
+        onCancel={handleCancel}
+      >
+        <JumioPageC2R setState={setState} setIsJumioKYCVisible={setIsJumioKYCVisible} />
+      </Modal> */}
+      {state.redirectUrl && (
+        <Modal
+          className="CR_jumio_modal"
+          width={1000}
+          open={isJumioKYCVisible}
+          footer={null}
+          // onOk={handleOk}
+          onCancel={handleCancel}
+          // closable={false}
+          // maskClosable={false}
+        >
+          <iframe
+            title="jumio"
+            src={state.redirectUrl}
+            width="100%"
+            height="500px"
+            allow="camera;fullscreen;accelerometer;gyroscope;magnetometer"
+            allowfullscreen
+          ></iframe>
+        </Modal>
+      )}
+      {/* </DefaultLayout> */}
+    </Main>
+  );
+}
