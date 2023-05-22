@@ -1,0 +1,412 @@
+import React, { useEffect, useReducer, useState } from "react";
+import Main from "../Layouts/Main";
+import BackArrow from "../../../assets/images/click2remit/Back_arrow.svg";
+import CustomInput from "../../../reusable/CustomInput";
+import FloatInput from "../../../reusable/FloatInput";
+import { Form, notification, Select } from "antd";
+import useHttp from "../../../hooks/useHttp";
+import { ReceiverAPI } from "../../../apis/ReceiverAPI";
+import { useSelector } from "react-redux";
+import { GuestAPI } from "../../../apis/GuestAPI";
+import Spinner from "../../../reusable/Spinner";
+import { inputValidations } from "../../../services/validations/validations";
+import { BankAccountAPI } from "../../../apis/BankAccountAPI";
+
+const { Option } = Select;
+
+const CreateBeneficiaryBankDetails = (props) => {
+  const { form } = props;
+  const AuthReducer = useSelector((state) => state.user);
+  const [loader, setLoader] = useState(0);
+  const [state, setState] = useReducer((state, newState) => ({ ...state, ...newState }), {
+    bankLists: [],
+    ifscValid: false,
+  });
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: "smooth" });
+    getBankList();
+  }, []);
+
+  useEffect(() => {
+    if (props.state.ifscBankCode) {
+      form.setFieldsValue({
+        ifsccode: props.state.ifscBankCode,
+        bankName: props?.state?.beneBankName
+          ? props?.state?.beneBankName
+          : props?.state?.beneficiaryBankDetails?.bankName,
+      });
+    }
+  }, [props.state.ifscBankCode]);
+
+  const hookGetBankLists = useHttp(ReceiverAPI.bankLists);
+  const hookGetBankBranchData = useHttp(GuestAPI.bankBranchData);
+  const hookCheckDuplicateReceiver = useHttp(ReceiverAPI.checkDuplicateReceiver);
+  const hookKotakBnkAccEnquiry = useHttp(BankAccountAPI.kotakBnkAccEnquiry);
+
+  const getBankList = async (e) => {
+    const payload = {
+      requestType: "BANKLIST",
+      countryCode: AuthReducer.recvCountryCode,
+      userId: AuthReducer.userID,
+    };
+    setLoader((prevState) => prevState + 1);
+    hookGetBankLists.sendRequest(payload, function (data) {
+      setLoader((prevState) => prevState - 1);
+      if (data.status === "S") {
+        setState({
+          bankLists: data.responseData,
+        });
+      }
+    });
+  };
+
+  const submitHandler = (values) => {
+    props.setState({ beneBankAndAcctNo: values });
+
+    // let bankDetails = JSON.parse(values.bankName);
+    if (
+      props?.state?.beneficiaryBankDetails?.bankId == "KKBK" ||
+      props?.state?.beneficiaryBankDetails?.bankCode == "KKBK"
+    ) {
+      const payload = {
+        requestType: "KOTAKACCENQUIRY",
+        accountNo: values.accountNo,
+        userId: AuthReducer.userID,
+        firstName: props.state.beneficiaryDetails.firstName.trim(),
+        middleName: props.state.beneficiaryDetails.middleName
+          ? props.state.beneficiaryDetails.middleName.trim()
+          : "",
+        lastName: props.state.beneficiaryDetails.lastName.trim(),
+        applyNameMatch: "Y",
+      };
+      setLoader((prevState) => prevState + 1);
+      hookKotakBnkAccEnquiry.sendRequest(payload, function (data) {
+        setLoader((prevState) => prevState - 1);
+        if (data.status === "S") {
+          if (data.statusFlag == "A" || data.statusFlag == "I" || data.statusFlag == "F") {
+            notification.success({ message: data.message });
+            checkDuplicateReceiver(values);
+          } else {
+            notification.error({ message: "Status flag not found" });
+          }
+        } else {
+          notification.error({
+            message: data.errorMessage ? data.errorMessage : "Kotak bank account enquiry failed.",
+          });
+        }
+      });
+    } else {
+      checkDuplicateReceiver(values);
+    }
+  };
+  const checkDuplicateReceiver = (values) => {
+    let formData = {
+      requestType: "RECEIVERADD",
+      receiverType: "INDIVIDUAL",
+      firstName: props.state.beneficiaryDetails.firstName.trim(),
+      middleName: props.state.beneficiaryDetails.middleName
+        ? props.state.beneficiaryDetails.middleName.trim()
+        : "",
+      lastName: props.state.beneficiaryDetails.lastName.trim(),
+      nickName: props.state.beneficiaryDetails.nickname.trim(),
+      accountNo: values.accountNo,
+      relationship: props?.state?.beneficiaryDetails?.relationship,
+      gender: "",
+      dob: "",
+      address1: props.state.beneficiaryResidentialDetails.address1.trim(),
+      address2: props.state.beneficiaryResidentialDetails.address2.trim(),
+      // address3: props.state.beneficiaryResidentialDetails.address3
+      //   ? props.state.beneficiaryResidentialDetails.address3.trim()
+      //   : "",
+      zipcode: props.state.beneficiaryResidentialDetails.zipCode,
+      state: props.state.beneficiaryResidentialDetails.state,
+      stateOther: "",
+      city: props.state.beneficiaryResidentialDetails.city,
+      nationality: "",
+      cityOther: "",
+      emailId: props.state.beneficiaryDetails.email,
+      mobileCountryCode: props.state.beneficiaryDetails.mobileCountryCode,
+      mobileNo: props.state.beneficiaryDetails.mobileNo,
+      phoneNo: "",
+      altPhone: "",
+      fax: "",
+      recvMode: "DC",
+      accountHolderName: `${props.state.beneficiaryDetails.firstName} ${props.state.beneficiaryDetails.lastName}`,
+      accountType: "S",
+      bankName: props.state.beneficiaryBankDetails.bankName
+        ? props.state.beneficiaryBankDetails.bankName
+        : props.state.beneBankName,
+      branchCode: props.state.beneficiaryBankDetails.branchCode,
+      zipcode: props.state.beneficiaryResidentialDetails.zipcode,
+      bankBranch: props.state.beneficiaryBankDetails.branchName,
+      bankAddress: props.state.beneficiaryBankDetails.bankAddress,
+      bankState: props.state.beneficiaryBankDetails.bankState,
+      bankCity: props.state.beneficiaryBankDetails.bankCity,
+      nearestBranchCode: "",
+      nearestBranch: "",
+      recvUniqueIdType: "",
+      recvUniqueIdValue: "",
+      interBankCode: "",
+      interBank: "",
+      interAccountNo: "",
+      interAccountType: "",
+      interBranchCode: "",
+      interBankBranch: "",
+      interBankAddress: "",
+      interBankCountry: "",
+      recvCountry: AuthReducer.recvCountryCode,
+      recvCurrency: AuthReducer.recvCurrencyCode,
+      purpose: props.state.purposeName,
+      purposeCode: props.state.purposeCode,
+      remark: "",
+      isSameBank: "N",
+      twofa: "N",
+      otpFlag: "N",
+      userId: AuthReducer.userID,
+    };
+    setLoader((prevState) => prevState + 1);
+    hookCheckDuplicateReceiver.sendRequest(formData, function (data) {
+      setLoader((prevState) => prevState - 1);
+      if (data.status == "S") {
+        props.setState({ activeStepForm: 11 });
+        // saveReceiver();
+        // sendOTP();
+      } else {
+        notification.error({
+          message: data.errorMessage ? data.errorMessage : "Duplicate receiver failed.",
+        });
+        let errors = [];
+        data.errorList.forEach((error, i) => {
+          let errorData = {
+            name: error.field,
+            errors: [error.error],
+          };
+          errors.push(errorData);
+        });
+
+        if (errors.length > 0) form.setFields(errors);
+      }
+    });
+  };
+  const onChangeIFSCCode = async (e) => {
+    // setIfscCode(e.target.value);
+    if (e.target.value.length == 11) {
+      // props.setLoader(true);state
+      const payload = {
+        requestType: "BANKBRANCHDATA",
+        branchCode: e.target.value,
+      };
+      setLoader((prevState) => prevState + 1);
+      hookGetBankBranchData.sendRequest(payload, function (data) {
+        setLoader((prevState) => prevState - 1);
+        if (data.status == "S") {
+          let bankData = {
+            bankId: data.bankId,
+            bankName: data.bankName,
+            branchName: data.branchName,
+            branchCode: data.branchCode,
+            bankCountry: data.bankCountry,
+            bankState: data.bankState,
+            bankCity: data.bankCity,
+            bankAddress: data.bankAddress,
+          };
+          form.setFieldsValue({ bankName: data.bankName });
+          props.setState({ beneficiaryBankDetails: bankData });
+          notification.success({ message: data.message });
+          setState({ ifscValid: false });
+        } else {
+          setState({ ifscValid: true });
+          if (!data.errorList) {
+            form.setFields([{ name: "ifsccode", errors: [data.errorMessage] }]);
+            notification.error({
+              message: data.errorMessage ? data.errorMessage : "Get bank branch data failed.",
+            });
+          }
+          data.errorList.forEach((error, i) => {
+            if (error.field == "branchCode") {
+              form.setFields([{ name: "ifsccode", errors: [error.error] }]);
+              notification.error({ message: error.error });
+            }
+          });
+        }
+      });
+    } else {
+    }
+  };
+  return (
+    <div class="col-md-8 col-sm-12 col-lg-8 mobile-order-2">
+      <Spinner spinning={loader === 0 ? false : true}>
+        <div class="CR-account-form CR-otp-form">
+          <Form
+            form={form}
+            onFinish={(values) => {
+              state.ifscValid
+                ? form.setFields([{ name: "ifsccode", errors: ["Please enter valid IFSC code"] }])
+                : submitHandler(values);
+            }}
+            autoComplete="none"
+          >
+            <fieldset>
+              <ul class="row">
+                <li class="col-md-12 col-sm-12 col-lg-12 ">
+                  <h4 class="text-black ">Beneficiary Bank Details</h4>
+                </li>
+                <li class="col-md-12 col-sm-12 col-lg-12">
+                  <p class="text-left">Enter bank details of your new beneficiary.</p>
+                </li>
+                <legend></legend>
+                <li class="col-md-12 col-sm-12 col-lg-12">
+                  <CustomInput
+                    showLabel={false}
+                    name="ifsccode"
+                    validationRules={[
+                      {
+                        pattern: /^[A-Za-z0-9 ]+$/,
+                        message: "Special characters not allowed",
+                      },
+                      {
+                        pattern: /^\S*$/,
+                        message: "Space not allowed in ifsc code",
+                      },
+                    ]}
+                    min={11}
+                    max={11}
+                    required
+                    label="IFSC"
+                  >
+                    <FloatInput onChange={onChangeIFSCCode} type="text" placeholder="IFSC" />
+                  </CustomInput>
+                  <button
+                    type="button"
+                    className="CR-blue-link CR-font-14 CR-fw-500 btn btn-link p-0"
+                    style={{ marginTop: "-20px" }}
+                    onClick={() => {
+                      // if (props.state.beneBankName || props.state.beneficiaryBankDetails.bankName) {
+                      props.setState({ activeStepForm: 10 });
+                      // } else {
+                      //   form.setFields([{ name: "bankName", errors: ["Select Bank"] }]);
+                      // }
+                    }}
+                  >
+                    Find IFSC
+                  </button>
+                </li>
+                <li class="col-md-12 col-sm-12 col-lg-12">
+                  {/* <div class="form-floating">
+                        <input type="text" class="form-control" id="floatingInput" />
+                        <label for="floatingInput">First name</label>
+                      </div> */}
+                  <CustomInput
+                    showLabel={false}
+                    name="accountNo"
+                    label="Account Number"
+                    type="password"
+                    validationRules={[
+                      ...inputValidations.accountNumber(AuthReducer.recvCountryCode),
+                    ]}
+                    required
+                  >
+                    <FloatInput type="password" placeholder="Account Number" />
+                  </CustomInput>
+                  {/* <FloatInput type="text" placeholder="First name" /> */}
+                </li>
+                <li class="col-md-12 col-sm-12 col-lg-12">
+                  <CustomInput
+                    showLabel={false}
+                    name="reaccnumber"
+                    label="Re-enter Account Number"
+                    type="password"
+                    required
+                    validationRules={[
+                      ({ getFieldValue }) => ({
+                        validator(rule, value) {
+                          if (!value || getFieldValue("accountNo") === value) {
+                            return Promise.resolve();
+                          }
+                          return Promise.reject("The two accountNo that you entered do not match!");
+                        },
+                      }),
+                    ]}
+                  >
+                    <FloatInput type="password" placeholder="Re-enter Account Number" />
+                  </CustomInput>
+                </li>
+                <li class="col-md-12 col-sm-12 col-lg-12">
+                  <CustomInput
+                    name="bankName"
+                    label="Bank Name"
+                    showLabel={false}
+                    // type="select"
+                    showSearch
+                    labelInValue
+                    placeholder="Select Bank"
+                    required
+                  >
+                    <FloatInput
+                      // name="bankName"
+                      label="Bank Name"
+                      showLabel={false}
+                      type="select"
+                      showSearch
+                      labelInValue
+                      onChange={(e) => {
+                        form.setFieldsValue({
+                          ifsccode: "",
+                          reaccnumber: "",
+                          accountNo: "",
+                        });
+                        let bankDetails = JSON.parse(e);
+                        props.setState({
+                          beneBankName: bankDetails.bankName,
+                          beneficiaryBankCode: bankDetails.bankCode,
+                          // beneficiaryBankDetails: {},
+                        });
+                      }}
+                      placeholder="Select Bank"
+                      required
+                    >
+                      {state.bankLists.map((bank, i) => {
+                        return (
+                          <Option key={i} value={JSON.stringify(bank)}>
+                            {bank.bankName}
+                            {/* <span bankCode={bank.bankCode} isSameBank={bank.isSameBank}>
+                              
+                            </span> */}
+                          </Option>
+                        );
+                      })}
+                    </FloatInput>
+                  </CustomInput>
+                  {/* <div class="form-floating">
+                  <select class="form-select" id="floatingSelect">
+                    <option selected>Select your secret question</option>
+                    <option value="1">One</option>
+                    <option value="2">Two</option>
+                    <option value="3">Three</option>
+                  </select>
+                </div> */}
+                </li>
+              </ul>
+              <div class="bottom_panel">
+                <div class="d-flex justify-content-between align-items-center gap-3 gap-md-5">
+                  <span
+                    onClick={() => props.setState({ activeStepForm: 8 })}
+                    class="Back_arrow d-flex align-items-center"
+                  >
+                    <img src={BackArrow} alt="backArrow" />
+                    Back
+                  </span>
+                  <button style={{ maxWidth: "17rem" }} htmlType="submit" class="CR-primary-btn ">
+                    Proceed
+                  </button>
+                </div>
+              </div>
+            </fieldset>
+          </Form>
+        </div>
+      </Spinner>
+    </div>
+  );
+};
+
+export default CreateBeneficiaryBankDetails;
