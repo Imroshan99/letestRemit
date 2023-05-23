@@ -1,0 +1,29 @@
+https://qaone.remit.in/services/usr/acc/add-via-ach-bank-accounts
+
+{
+    "requestId": 1408678505,
+    "channelId": "WEB",
+    "clientId": "C2R",
+    "groupId": "C2R",
+    "sessionId": "GGZ9kVMJsNEIMGw9XTr26pcU4D6o9vAY0p2EzaGIOUz6AutTZJ",
+    "ipAddress": "127.0.0.1",
+    "requestType": "ADDVIAACHBANK",
+    "userId": "1111108027",
+    "countryCode": "US",
+    "currencyCode": "USD"
+}
+
+{
+    "responseId": "6100487",
+    "requestId": "1408678505",
+    "responseType": "ADDVIAACHBANK",
+    "groupId": "C2R",
+    "token": null,
+    "status": "F",
+    "message": "Accounts added successfully",
+    "errorCode": "4004",
+    "errorMessage": "Account number you have entered is already registered by you. Please enter a different account number.",
+    "errorList": null,
+    "processType": "ACH",
+    "achaccId": "11822"
+}
